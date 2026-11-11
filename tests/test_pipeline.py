@@ -174,7 +174,8 @@ def test_rescan_is_incremental(setup: tuple[Path, Path, Path, Config]) -> None:
     assert analyzer.calls[str(new)] == 0
 
     moved = conn.execute("SELECT * FROM files WHERE id = ?", (old_id,)).fetchone()
-    assert moved["path"] == str(new) and moved["mediainfo_raw"] is not None
+    assert moved["path"] == str(new)
+    assert conn.execute("SELECT 1 FROM file_mediainfo WHERE file_id = ?", (old_id,)).fetchone()
     assert json.loads(moved["filename_parsed"])["tmdb_id"] == "949"
     assert conn.execute("SELECT dv_profile FROM video_info WHERE file_id = ?",
                         (old_id,)).fetchone()[0] == 5  # fmt: skip

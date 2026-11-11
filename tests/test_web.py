@@ -363,3 +363,31 @@ def test_splash_only_for_serve(
     assert "m e d i a - a u d i t" in capsys.readouterr().out
     assert cli.main(["-c", str(config_file), "stats", "--json"]) in (0, 2)
     assert "m e d i a - a u d i t" not in capsys.readouterr().out
+
+
+def test_page_cache_reused_until_data_changes(client: TestClient) -> None:
+    db = client.app.state.db  # type: ignore[attr-defined]
+    client.get("/titles")
+    misses = db.misses
+    for _ in range(3):
+        assert client.get("/titles").status_code == 200
+    assert db.misses == misses and db.hits >= 3  # served from the cache
+
+    # A write from another connection (e.g. `docker exec ... media-audit scan`) clears it.
+    service = client.app.state.service  # type: ignore[attr-defined]
+    other = connect(service.config().database)
+    other.execute("UPDATE titles SET name = 'Heat (renamed)' WHERE name = 'Heat'")
+    assert "Heat (renamed)" in client.get("/titles?q=Heat").text
+    assert db.misses > misses
+
+
+def test_warm_fills_default_views(config_file: Path) -> None:
+    service = _service(config_file)
+    _scan(service)
+    app = create_app(service)
+    app.state.warm()
+    misses = app.state.db.misses
+    client = TestClient(app)
+    for url in ["/", "/titles", "/files"]:
+        assert client.get(url).status_code == 200
+    assert app.state.db.misses == misses  # every default view was already computed

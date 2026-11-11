@@ -121,7 +121,7 @@ def _file_columns(f: FoundFile) -> dict[str, object]:
 
 
 def _clear_analysis(conn: sqlite3.Connection, file_id: int) -> None:
-    for table in ("video_info", "audio_tracks", "release_info"):
+    for table in ("video_info", "audio_tracks", "release_info", "file_mediainfo"):
         conn.execute(f"DELETE FROM {table} WHERE file_id = ?", (file_id,))
     conn.execute("DELETE FROM subtitle_tracks WHERE file_id = ? AND is_external = 0", (file_id,))
 
@@ -195,7 +195,7 @@ def sync_library(
                         "UPDATE files SET size_bytes = ?, mtime_ns = ?, dev = ?, inode = ?, "
                         "role = ?, is_video = ?, last_seen = ?, changed_at = ?, "
                         "deleted_at = NULL, analyzed_at = NULL, analyzer = NULL, "
-                        "analyze_error = NULL, derived_at = NULL, mediainfo_raw = NULL "
+                        "analyze_error = NULL, derived_at = NULL "
                         "WHERE id = ?",
                         (
                             f.size, f.mtime_ns, f.dev, f.inode or None, cols["role"],

@@ -87,12 +87,13 @@ def write_derived(
 def derive_pending(conn: sqlite3.Connection, now: str, library_ids: list[int] | None = None) -> int:
     """Derive every live file whose ``derived_at`` is NULL. Returns the count."""
     sql = (
-        "SELECT id, filename, ext, size_bytes, is_video, mediainfo_raw FROM files "
-        "WHERE deleted_at IS NULL AND derived_at IS NULL"
+        "SELECT f.id, f.filename, f.ext, f.size_bytes, f.is_video, m.raw AS mediainfo_raw "
+        "FROM files f LEFT JOIN file_mediainfo m ON m.file_id = f.id "
+        "WHERE f.deleted_at IS NULL AND f.derived_at IS NULL"
     )
     params: list[object] = []
     if library_ids is not None:
-        sql += f" AND library_id IN ({','.join('?' * len(library_ids))})"
+        sql += f" AND f.library_id IN ({','.join('?' * len(library_ids))})"
         params.extend(library_ids)
     rows = conn.execute(sql, params).fetchall()
     count = 0

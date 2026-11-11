@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import sqlite3
+import threading
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from importlib import resources
@@ -33,7 +35,10 @@ from starlette.staticfiles import StaticFiles
 from media_audit import __version__
 from media_audit.config import ConfigError
 from media_audit.web import queries
+from media_audit.web.data import ReadDB
 from media_audit.web.service import ScanService
+
+log = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- formatting
 
@@ -210,23 +215,23 @@ def _env() -> Environment:
 # --------------------------------------------------------------------------- app
 
 
+def _key(name: str, params: Mapping[str, str], *extra: Any) -> tuple[Any, ...]:
+    return (name, tuple(sorted(params.items())), *extra)
+
+
 def create_app(service: ScanService) -> Starlette:
     env = _env()
+    db = ReadDB()
 
-    def connect_ro() -> sqlite3.Connection | None:
+    def db_path() -> Path | None:
         try:
-            db: Path = service.config().database
+            return service.config().database
         except ConfigError:
             return None
-        if not db.exists():
-            return None
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout = 5000")
-        return conn
 
     def render(request: Request, template: str, status_code: int = 200, **ctx: Any) -> Response:
         conn = ctx.pop("_conn", None)
+        libraries = db.cached(("libraries",), lambda: queries.libraries(conn)) if conn else []
         context = {
             "request": request,
             "params": dict(request.query_params),
@@ -235,7 +240,7 @@ def create_app(service: ScanService) -> Starlette:
             "config_path": service.config_path,
             "first_start": service.first_start,
             "nav": template.split(".")[0],
-            "libraries": queries.libraries(conn) if conn else [],
+            "libraries": libraries,
             **ctx,
         }
         html = env.get_template(template).render(context)
@@ -245,14 +250,10 @@ def create_app(service: ScanService) -> Starlette:
         """Run a page handler in a worker thread with a read-only DB connection."""
 
         def run(request: Request) -> Response:
-            conn = connect_ro()
-            try:
-                if conn is None or not queries.has_data(conn):
+            with db.connection(db_path()) as conn:
+                if conn is None or not db.cached(("has_data",), lambda: queries.has_data(conn)):
                     return render(request, "empty.html", _conn=conn)
                 return handler(request, conn)  # type: ignore[no-any-return]
-            finally:
-                if conn is not None:
-                    conn.close()
 
         async def endpoint(request: Request) -> Response:
             return await run_in_threadpool(run, request)
@@ -261,7 +262,7 @@ def create_app(service: ScanService) -> Starlette:
 
     def overview(request: Request, conn: sqlite3.Connection) -> Response:
         library = request.query_params.get("library") or None
-        data = queries.overview(conn, library)
+        data = db.cached(("overview", library), lambda: queries.overview(conn, library))
         return render(
             request,
             "overview.html",
@@ -272,40 +273,41 @@ def create_app(service: ScanService) -> Starlette:
         )
 
     def titles(request: Request, conn: sqlite3.Connection) -> Response:
-        page = queries.titles(conn, request.query_params)
+        params = request.query_params
+        page = db.cached(_key("titles", params), lambda: queries.titles(conn, params))
         return render(request, "titles.html", _conn=conn, page=page)
 
     def title(request: Request, conn: sqlite3.Connection) -> Response:
-        detail = queries.title_detail(conn, int(request.path_params["title_id"]))
+        tid = int(request.path_params["title_id"])
+        detail = db.cached(("title", tid), lambda: queries.title_detail(conn, tid))
         if detail is None:
             return render(request, "notfound.html", status_code=404, _conn=conn)
         return render(request, "title.html", _conn=conn, **detail)
 
     def files(request: Request, conn: sqlite3.Connection) -> Response:
-        page = queries.files(conn, request.query_params)
-        return render(
-            request, "files.html", _conn=conn, page=page, options=queries.file_filter_options(conn)
-        )
+        params = request.query_params
+        page = db.cached(_key("files", params), lambda: queries.files(conn, params))
+        options = db.cached(("file_options",), lambda: queries.file_filter_options(conn))
+        return render(request, "files.html", _conn=conn, page=page, options=options)
 
     async def files_csv(request: Request) -> Response:
-        conn = connect_ro()
-        if conn is None:
+        path = db_path()
+        if path is None or not path.exists():
             return PlainTextResponse("no database yet", status_code=404)
         params = dict(request.query_params)
 
         def stream() -> Iterator[str]:
             buf = io.StringIO()
             writer = csv.writer(buf)
-            try:
+            with db.connection(path) as conn:
+                assert conn is not None
                 for i, row in enumerate(queries.files_csv_rows(conn, params)):
                     writer.writerow(row)
                     if i % 500 == 0:
                         yield buf.getvalue()
                         buf.seek(0)
                         buf.truncate()
-                yield buf.getvalue()
-            finally:
-                conn.close()
+            yield buf.getvalue()
 
         stamp = datetime.now().strftime("%Y%m%d-%H%M")
         return StreamingResponse(
@@ -317,13 +319,9 @@ def create_app(service: ScanService) -> Starlette:
         )
 
     def _scans(request: Request) -> Response:
-        conn = connect_ro()
-        try:
-            history = queries.scans(conn) if conn else []
+        with db.connection(db_path()) as conn:
+            history = db.cached(("scans",), lambda: queries.scans(conn)) if conn else []
             return render(request, "scans.html", _conn=conn, history=history)
-        finally:
-            if conn:
-                conn.close()
 
     async def scans(request: Request) -> Response:
         return await run_in_threadpool(_scans, request)
@@ -373,6 +371,26 @@ def create_app(service: ScanService) -> Starlette:
         Route("/healthz", healthz),
         Mount("/static", StaticFiles(directory=static_dir), name="static"),
     ]
+
+    def warm() -> None:
+        """Fill the cache for the default views so the first click after a scan is quick."""
+        try:
+            with db.connection(db_path()) as conn:
+                if conn is None or not queries.has_data(conn):
+                    return
+                empty: dict[str, str] = {}
+                db.cached(("libraries",), lambda: queries.libraries(conn))
+                db.cached(("has_data",), lambda: True)
+                db.cached(("overview", None), lambda: queries.overview(conn, None))
+                db.cached(_key("titles", empty), lambda: queries.titles(conn, empty))
+                db.cached(_key("files", empty), lambda: queries.files(conn, empty))
+                db.cached(("file_options",), lambda: queries.file_filter_options(conn))
+        except Exception:  # only an optimisation; pages compute on demand anyway
+            log.exception("cache warm-up failed")
+
     app = Starlette(routes=routes)
     app.state.service = service
+    app.state.db = db
+    app.state.warm = warm
+    service.on_finish.append(lambda: threading.Thread(target=warm, daemon=True).start())
     return app

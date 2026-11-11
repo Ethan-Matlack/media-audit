@@ -168,3 +168,38 @@ def test_splash(monkeypatch: pytest.MonkeyPatch) -> None:
     text = render()
     assert "m e d i a - a u d i t" in text
     assert __version__ in text and __author__ in text and "media-audit-test" in text
+
+
+def test_mediainfo_raw_moves_out_of_files(tmp_path: Path) -> None:
+    """Migration 0003 on a database created before it: data kept, file compacted."""
+    from importlib import resources
+
+    from media_audit.db import _migrations
+
+    db = tmp_path / "old.db"
+    conn = connect(db, migrate=False)
+    for version, _, sql in _migrations():
+        if version > 2:
+            break
+        conn.executescript(f"BEGIN;\n{sql}\n;INSERT INTO meta VALUES ('schema_version', "
+                           f"'{version}') ON CONFLICT (key) DO UPDATE SET value = excluded.value;"
+                           "COMMIT;")  # fmt: skip
+    conn.execute("INSERT INTO libraries VALUES (1, 'm', '/m', 'movies', 1, 'now')")
+    big = '{"media": {"track": [{"@type": "Video", "pad": "' + "x" * 20000 + '"}]}}'
+    conn.executemany(
+        "INSERT INTO files (id, library_id, path, rel_path, filename, ext, role, is_video, "
+        "size_bytes, mtime_ns, first_seen, last_seen, mediainfo_raw) "
+        "VALUES (?, 1, ?, ?, ?, 'mkv', 'main', 1, 1, 1, 'now', 'now', ?)",
+        [(i, f"/m/{i}.mkv", f"{i}.mkv", f"{i}.mkv", big if i % 2 else None) for i in range(1, 301)],
+    )
+    conn.close()
+
+    conn = connect(db)
+    assert schema_version(conn) == latest_version()
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(files)")}
+    assert "mediainfo_raw" not in cols
+    assert conn.execute("SELECT count(*) FROM file_mediainfo").fetchone()[0] == 150
+    assert conn.execute("SELECT raw FROM file_mediainfo WHERE file_id = 1").fetchone()[0] == big
+    assert conn.execute("PRAGMA freelist_count").fetchone()[0] == 0  # compacted
+    assert resources.files("media_audit.db.migrations").joinpath(
+        "0003_split_mediainfo_raw.sql").is_file()  # fmt: skip

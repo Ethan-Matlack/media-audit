@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 from collections.abc import Iterator
@@ -9,6 +10,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 _MIGRATION_NAME = re.compile(r"^(\d{4})_[a-z0-9_]+\.sql$")
 
@@ -36,9 +39,27 @@ def connect(path: Path | str, *, migrate: bool = True) -> sqlite3.Connection:
     if str(path) != ":memory:":
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
-    if migrate:
-        apply_migrations(conn)
+    if migrate and apply_migrations(conn) and str(path) != ":memory:":
+        compact_if_sparse(conn)
     return conn
+
+
+def compact_if_sparse(conn: sqlite3.Connection, threshold: float = 0.25) -> bool:
+    """VACUUM when over ``threshold`` of the file is free pages (e.g. after a migration
+    moved data out). Skipped quietly if another connection is using the database."""
+    pages = conn.execute("PRAGMA page_count").fetchone()[0]
+    free = conn.execute("PRAGMA freelist_count").fetchone()[0]
+    if not pages or free / pages < threshold:
+        return False
+    log.info("compacting database (%d of %d pages free)", free, pages)
+    try:
+        conn.execute("VACUUM")
+        # In WAL mode the compacted pages land in the WAL; checkpoint so the file shrinks.
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except sqlite3.OperationalError as exc:  # busy: try again after the next migration
+        log.warning("database compaction skipped: %s", exc)
+        return False
+    return True
 
 
 @contextmanager

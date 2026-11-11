@@ -115,10 +115,18 @@ def _store_analysis(
     if raw is not None and not has_video and error is None:
         error = "no video stream found"
     conn.execute(
-        "UPDATE files SET analyzed_at = ?, analyzer = ?, analyze_error = ?, mediainfo_raw = ?, "
-        "derived_at = NULL WHERE id = ?",
-        (now, analyzer, error, json.dumps(raw, separators=(",", ":")) if raw else None, file_id),
+        "UPDATE files SET analyzed_at = ?, analyzer = ?, analyze_error = ?, derived_at = NULL "
+        "WHERE id = ?",
+        (now, analyzer, error, file_id),
     )
+    if raw:
+        conn.execute(
+            "INSERT INTO file_mediainfo (file_id, raw) VALUES (?, ?) "
+            "ON CONFLICT (file_id) DO UPDATE SET raw = excluded.raw",
+            (file_id, json.dumps(raw, separators=(",", ":"))),
+        )
+    else:
+        conn.execute("DELETE FROM file_mediainfo WHERE file_id = ?", (file_id,))
 
 
 def analyze_pending(

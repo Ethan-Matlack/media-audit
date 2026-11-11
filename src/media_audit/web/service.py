@@ -99,6 +99,7 @@ class ScanService:
         self._scan_thread: threading.Thread | None = None
         self._scheduler: threading.Thread | None = None
         self._last_log = 0.0
+        self.on_finish: list[Callable[[], None]] = []  # e.g. warm the web page cache
 
     # ------------------------------------------------------------------ config
 
@@ -210,6 +211,11 @@ class ScanService:
             self._state = ScanState(last=result)
         if result.get("status") == "ok":
             self.first_start = False
+        for hook in self.on_finish:
+            try:
+                hook()
+            except Exception:
+                log.exception("scan-finished hook failed")
 
     def _run(self, trigger: str) -> None:
         result: dict[str, Any] = {"trigger": trigger, "status": "failed", "errors": []}

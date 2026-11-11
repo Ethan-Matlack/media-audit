@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -27,11 +28,13 @@ def build(
     @contextlib.asynccontextmanager
     async def lifespan(_: Starlette) -> AsyncIterator[None]:
         service.start()
+        threading.Thread(target=app.state.warm, name="warm-cache", daemon=True).start()
         try:
             yield
         finally:
             log.info("shutting down")
             service.shutdown()
+            app.state.db.close()
 
     app.router.lifespan_context = lifespan
     return app, service
