@@ -12,7 +12,7 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Topic :: Multimedia :: Video",
 ]
-# Every runtime dependency must be permissively licensed (see HANDOFF.md §2.7).
+# Every runtime dependency must be permissively licensed (MIT/BSD/Apache-style; no GPL/LGPL).
 #   pymediainfo  MIT   (wraps libmediainfo, BSD-2-Clause, installed separately)
 #   PyYAML       MIT
 #   pydantic     MIT

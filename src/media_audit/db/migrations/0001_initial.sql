@@ -1,4 +1,4 @@
--- Initial schema. See HANDOFF.md §6.
+-- Initial schema.
 --
 -- Conventions:
 --   * Timestamps are ISO-8601 UTC text ("2026-11-08T20:21:00Z").

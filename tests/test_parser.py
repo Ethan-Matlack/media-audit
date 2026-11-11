@@ -9,7 +9,7 @@ import pytest
 from media_audit.parsing import parse_filename
 
 CASES: list[tuple[str, dict[str, Any]]] = [
-    # --- Radarr "Plex-style" names from the author's library (HANDOFF §7)
+    # --- Radarr "Plex-style" names from the author's library
     (
         "Harry Potter and the Philosophers Stone (2001) {tmdb-671} "
         "[Bluray-2160p][HDR10][DTS-X 7.1][x265]-TERMiNAL.mkv",
