@@ -1,17 +1,26 @@
-"""Command-line interface: ``media-audit scan | rederive | stats | check-config``."""
+"""Command-line interface: ``media-audit scan | rederive | stats | check-config | init-config``."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 from media_audit import __version__
 from media_audit import stats as stats_mod
-from media_audit.config import Config, ConfigError, load_config
+from media_audit.config import (
+    AUTO_INIT_ENV,
+    CONFIG_ENV,
+    MEDIA_ROOT_ENV,
+    Config,
+    ConfigError,
+    find_config_path,
+    load_config,
+)
 
 log = logging.getLogger("media_audit")
 
@@ -193,6 +202,57 @@ def cmd_check_config(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+DEFAULT_MEDIA_ROOT = Path("/media")
+
+
+def _init_target(args: argparse.Namespace) -> Path:
+    if args.config:
+        return Path(args.config)
+    env = os.environ.get(CONFIG_ENV)
+    return Path(env) if env else Path("config.yml")
+
+
+def _generate_config(target: Path, media_root: Path, force: bool) -> int:
+    from media_audit.init_config import write_default_config
+
+    try:
+        text, candidates = write_default_config(
+            target, media_root, target.parent / "media-audit.db", force=force
+        )
+    except FileExistsError:
+        print(f"error: {target} already exists (use --force to overwrite)", file=sys.stderr)
+        return 1
+    libs = [c for c in candidates if c.type]
+    print(f"Wrote {target} with {len(libs)} libraries detected in {media_root}:")
+    for c in candidates:
+        print(f"  {c.name:<24} {c.type or '(skipped: not recognized as movies/tv)'}")
+    print(f"\n{text}")
+    return 0
+
+
+def cmd_init_config(args: argparse.Namespace) -> int:
+    return _generate_config(_init_target(args), args.media_root, args.force)
+
+
+def _auto_init(args: argparse.Namespace) -> int | None:
+    """Docker first start: create a config from /media and stop so it can be reviewed."""
+    if os.environ.get(AUTO_INIT_ENV) != "1" or args.command == "init-config":
+        return None
+    found = find_config_path()
+    if args.config or (found is not None and found.is_file()):
+        return None
+    target = _init_target(args)
+    media_root = Path(os.environ.get(MEDIA_ROOT_ENV) or DEFAULT_MEDIA_ROOT)
+    print(f"No config found at {target}; creating one (first start).")
+    rc = _generate_config(target, media_root, force=False)
+    if rc == 0:
+        print(
+            "Review the library list and types above (edit the file if needed), then start "
+            "the container again to scan. Nothing was scanned this time."
+        )
+    return rc
+
+
 # ------------------------------------------------------------------------- parser
 
 
@@ -228,6 +288,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("check-config", help="validate config, library paths, and libmediainfo")
     p.set_defaults(func=cmd_check_config)
+
+    p = sub.add_parser(
+        "init-config", help="write a starter config by detecting libraries under a media root"
+    )
+    p.add_argument("--media-root", type=Path, default=DEFAULT_MEDIA_ROOT,
+                   help="folder whose subfolders are the libraries (default: /media)")  # fmt: skip
+    p.add_argument("--force", action="store_true", help="overwrite an existing config")
+    p.set_defaults(func=cmd_init_config)
     return parser
 
 
@@ -237,6 +305,9 @@ def main(argv: list[str] | None = None) -> int:
     level = logging.WARNING - 10 * min(args.verbose, 2)
     logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     try:
+        initialized = _auto_init(args)
+        if initialized is not None:
+            return initialized
         return int(args.func(args))
     except ConfigError as exc:
         print(f"config error: {exc}", file=sys.stderr)

@@ -21,6 +21,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 ENV_PREFIX = "MEDIA_AUDIT_"
 CONFIG_ENV = "MEDIA_AUDIT_CONFIG"
+AUTO_INIT_ENV = "MEDIA_AUDIT_AUTO_INIT"  # Docker image: create a config on first start
+MEDIA_ROOT_ENV = "MEDIA_AUDIT_MEDIA_ROOT"  # where that first-start config looks for libraries
+# MEDIA_AUDIT_* variables that control the program rather than override config keys.
+NON_CONFIG_ENV = frozenset({CONFIG_ENV, AUTO_INIT_ENV, MEDIA_ROOT_ENV})
 DEFAULT_CONFIG_PATHS = (Path("config.yml"), Path("/config/config.yml"))
 
 DEFAULT_IGNORE = [
@@ -145,7 +149,7 @@ def find_config_path(explicit: Path | None = None) -> Path | None:
 
 def _apply_env_overrides(data: dict[str, Any], environ: dict[str, str]) -> None:
     for key, raw in environ.items():
-        if not key.startswith(ENV_PREFIX) or key == CONFIG_ENV:
+        if not key.startswith(ENV_PREFIX) or key in NON_CONFIG_ENV:
             continue
         parts = [p.lower() for p in key[len(ENV_PREFIX) :].split("__") if p]
         if not parts:

@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<!--
+  Unraid container template for media-audit.
+
+  Install without Community Apps (on the Unraid server's terminal):
+    wget -O /boot/config/plugins/dockerMan/templates-user/my-media-audit.xml \
+      https://raw.githubusercontent.com/Ethan-Matlack/media-audit/main/unraid/media-audit.xml
+  then Docker -> Add Container -> Template: media-audit.
+-->
+<Container version="2">
+  <Name>media-audit</Name>
+  <Repository>ghcr.io/ethan-matlack/media-audit:latest</Repository>
+  <Registry>https://github.com/Ethan-Matlack/media-audit/pkgs/container/media-audit</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Ethan-Matlack/media-audit/issues</Support>
+  <Project>https://github.com/Ethan-Matlack/media-audit</Project>
+  <Overview>Scans your media library (read-only) and reports what's actually in it: size per movie/show/season, and container, codecs, resolution, HDR10/HDR10+/Dolby Vision, Atmos/DTS:X, audio and subtitle languages and release group for every file.[br][br]Each start runs one scan and the container then stops; press Start (or schedule "docker start media-audit" with User Scripts) to rescan. Rescans only re-read new or changed files.[br][br]On the very first start it writes /config/config.yml from the folders it finds under /media and stops without scanning, so you can review the library list first.</Overview>
+  <Category>MediaApp:Video Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/Ethan-Matlack/media-audit/main/unraid/media-audit.xml</TemplateURL>
+  <Icon/>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/media-audit" Mode="rw" Description="Config file and SQLite database. Keep this on the cache/appdata share, not on the media array." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/media-audit</Config>
+  <Config Name="Media" Target="/media" Default="/mnt/user/media" Mode="ro" Description="Folder containing your libraries (e.g. movies/, tv/). Mounted read-only; media-audit never modifies files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the scanner runs as (99 = nobody)." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID the scanner runs as (100 = users)." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="TZ" Target="TZ" Default="UTC" Mode="" Description="Time zone, e.g. America/New_York." Type="Variable" Display="advanced" Required="false" Mask="false">UTC</Config>
+  <Config Name="Scan workers" Target="MEDIA_AUDIT_SCAN__WORKERS" Default="2" Mode="" Description="Files analyzed in parallel. Keep low (1-4) for array disks." Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
+</Container>

@@ -51,23 +51,31 @@ FROM python:${PYTHON_VERSION}-slim-${DEBIAN_RELEASE} AS runtime
 
 LABEL org.opencontainers.image.title="media-audit" \
       org.opencontainers.image.description="Scan a media library and report what's actually in it" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/Ethan-Matlack/media-audit"
 
 COPY --from=build /app/.venv /app/.venv
 COPY config.example.yml /app/config.example.yml
+COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
-    MEDIA_AUDIT_CONFIG=/config/config.yml
+    MEDIA_AUDIT_CONFIG=/config/config.yml \
+    MEDIA_AUDIT_MEDIA_ROOT=/media \
+    MEDIA_AUDIT_AUTO_INIT=1 \
+    PUID=1000 \
+    PGID=1000
 
 # Fail the build if the bundled libmediainfo can't load on this base image.
 RUN python -c "from pymediainfo import MediaInfo; assert MediaInfo.can_parse(), 'libmediainfo'"
 
-# Runs as any UID (set with `user:` in compose); /config must be writable by it.
-RUN mkdir -p /config && chmod 0777 /config
+# The entrypoint starts as root, makes /config writable for PUID:PGID (Unraid creates
+# appdata folders owned by root), then drops to that user. With `--user` / compose
+# `user:` it runs as that user directly. On first start with no config.yml it writes
+# one from the folders under /media and exits so it can be reviewed.
+RUN mkdir -p /config
 VOLUME ["/config"]
 WORKDIR /config
-USER 1000:1000
 
-ENTRYPOINT ["media-audit"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["scan"]

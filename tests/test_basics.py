@@ -81,6 +81,10 @@ def test_config_load_and_env(tmp_path: Path) -> None:
     assert cfg.scan.workers == 4
     assert cfg.linking.by_name_year is False
     assert cfg.languages.preferred_audio == ["en", "de"]
+    # Program-control variables set by the Docker image are not config keys.
+    docker_env = {"MEDIA_AUDIT_AUTO_INIT": "1", "MEDIA_AUDIT_MEDIA_ROOT": "/media",
+                  "MEDIA_AUDIT_CONFIG": str(cfg_file)}  # fmt: skip
+    assert load_config(cfg_file, environ=docker_env).scan.workers == 2
 
 
 def test_config_errors(tmp_path: Path) -> None:
