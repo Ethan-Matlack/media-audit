@@ -55,8 +55,10 @@
   <tbody>
   {% for f in page.rows %}
   <tr>
+    {% set folder = f.rel_path[: -(f.filename | length) - 1] if f.rel_path != f.filename else "" %}
     <td class="path">
-      {% if f.title_id %}<a href="/titles/{{ f.title_id }}">{{ f.rel_path }}</a>{% else %}{{ f.rel_path }}{% endif %}
+      <div class="file-name">{% if f.title_id %}<a href="/titles/{{ f.title_id }}">{{ f.filename }}</a>{% else %}{{ f.filename }}{% endif %}</div>
+      {% if folder %}<a class="file-folder" href="{{ qs(params, q=folder ~ '/', page=None) }}" title="Show only files in {{ folder }}/">{{ folder }}/</a>{% endif %}
       {% if f.analyze_error %}<div class="error small">{{ f.analyze_error }}</div>{% endif %}
     </td>
     <td>{{ f.library }}</td>

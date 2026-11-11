@@ -243,3 +243,8 @@ table.issues tr.ignored td { opacity: 0.55; }
 .issue-mark { margin-left: 0.35rem; font-size: 0.78rem; color: var(--warn); white-space: nowrap; }
 .empty-inline p { margin: 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Files table: file name first, its folder underneath in muted text. */
+.file-name { font-weight: 500; }
+a.file-folder { display: block; margin-top: 0.1rem; font-size: 0.8rem; color: var(--text-3); }
+a.file-folder:hover { color: var(--accent-ink); }
