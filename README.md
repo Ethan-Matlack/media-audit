@@ -108,6 +108,8 @@ port. To use the published image instead of building, replace `build:` with
 - **Stopping:** `docker stop` (or **Stop** on the Scans page) finishes the files being
   read and stops. The next scan resumes from there. A scan killed outright (power loss)
   is marked `interrupted` next time.
+- **Start-up banner:** each start prints a banner to the log with the version, author,
+  container name and the user it runs as, so restarts are easy to spot.
 - **Health:** the image has a healthcheck on `/healthz`.
 - **Image tags:** `latest` follows `main`, `X.Y.Z` and `X.Y` come from release tags, and
   `sha-<commit>` marks a specific build.
@@ -245,8 +247,13 @@ runtime image to GHCR using the built-in `GITHUB_TOKEN`.
 - **First publish:** the package starts out private. Make it public (GitHub →
   Packages → media-audit → Package settings → Change visibility) so Unraid can pull it
   without a login.
-- **Release:** `git tag v0.1.0 && git push origin v0.1.0` publishes `:0.1.0` and
-  `:0.1`. Bump `version` in `pyproject.toml` and `src/media_audit/__init__.py` first.
+- **Versions** are plain `X.Y.Z`, set in one place: `__version__` in
+  [src/media_audit/__init__.py](src/media_audit/__init__.py) (`pyproject.toml` reads it
+  from there). The version appears in the start-up banner in the container log and in
+  the web UI footer.
+- **Release:** bump `__version__`, commit, then `git tag v0.2.0 && git push origin v0.2.0`.
+  That publishes `:0.2.0` and `:0.2` (plus `:latest` from `main`). CI refuses a tag
+  that doesn't match `__version__`.
 
 Rules are tested against 17 MediaInfo captures from a real library (DV, HDR10+,
 Atmos, DTS:X, remuxes, AVI, MP4, anime). At the default `parse_speed: 0`, files whose MKV
