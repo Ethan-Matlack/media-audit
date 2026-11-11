@@ -5,6 +5,8 @@
 .pytest_cache
 .mypy_cache
 .ruff_cache
-docker/
+docker/media/
+docker/config/*
+!docker/config/config.yml
 *.db
 *.db-*

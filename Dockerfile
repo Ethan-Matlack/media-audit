@@ -42,6 +42,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY tests ./tests
 COPY scripts ./scripts
 COPY config.example.yml ./
+COPY docker/config/config.yml ./docker/config/config.yml
 ENV PATH="/app/.venv/bin:${PATH}"
 CMD ["sh", "-c", "ruff check . && ruff format --check . && mypy && pytest -v"]
 
