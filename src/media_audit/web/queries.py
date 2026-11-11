@@ -103,6 +103,82 @@ def growth(conn: sqlite3.Connection, library: str | None) -> list[dict[str, Any]
     return points
 
 
+# --------------------------------------------------------------------------- episodes
+
+
+def _episode_stats_sql(where: str = "1 = 1") -> str:
+    """Per (show, season): episodes, episode-file bytes, runtime and duplicates.
+
+    Only main video files count (no subtitles/artwork/extras). A file covering
+    S01E01-E03 counts as three episodes. An episode with several files counts once,
+    but every file's bytes count, so ``bytes / episodes`` is what each episode costs
+    on disk. ``season`` is -1 when the season is unknown.
+    """
+    return f"""
+        WITH eps AS (
+            SELECT f.title_id, coalesce(f.season_number, -1) AS season, f.size_bytes,
+                   v.duration_s, coalesce(f.episode_number, -f.id) AS ep,
+                   CASE WHEN f.episode_number_end > f.episode_number
+                        THEN f.episode_number_end - f.episode_number + 1 ELSE 1 END AS span
+            FROM files f
+            JOIN titles t ON t.id = f.title_id AND t.kind = 'show'
+            LEFT JOIN video_info v ON v.file_id = f.id
+            WHERE f.deleted_at IS NULL AND f.role = 'main' AND f.is_video = 1 AND {where}
+        ),
+        per_ep AS (
+            SELECT title_id, season, ep, max(span) AS span, count(*) AS files
+            FROM eps GROUP BY title_id, season, ep
+        ),
+        ep_agg AS (
+            SELECT title_id, season, sum(span) AS episodes,
+                   sum(files > 1) AS dup_episodes, sum(files - 1) AS extra_files
+            FROM per_ep GROUP BY title_id, season
+        ),
+        file_agg AS (
+            SELECT title_id, season, count(*) AS files, sum(size_bytes) AS bytes,
+                   sum(CASE WHEN duration_s > 0 THEN duration_s END) AS seconds,
+                   sum(duration_s > 0) AS timed_files,
+                   sum(CASE WHEN duration_s > 0 THEN size_bytes END) AS timed_bytes
+            FROM eps GROUP BY title_id, season
+        )
+        SELECT f.title_id, f.season, f.files, f.bytes, f.seconds, f.timed_bytes, f.timed_files,
+               e.episodes, e.dup_episodes, e.extra_files
+        FROM file_agg f JOIN ep_agg e USING (title_id, season)
+    """
+
+
+def _averages(row: Mapping[str, Any]) -> dict[str, Any]:
+    episodes = row["episodes"] or 0
+    seconds = row["seconds"] or 0
+    return {
+        "episodes": episodes,
+        "files": row["files"],
+        "bytes": row["bytes"],
+        "dup_episodes": row["dup_episodes"] or 0,
+        "extra_files": row["extra_files"] or 0,
+        "avg_bytes": row["bytes"] / episodes if episodes else None,
+        # Weighted by runtime: total GB / total hours, not an average of per-file ratios.
+        "gb_per_hour": (row["timed_bytes"] / 1e9) / (seconds / 3600) if seconds else None,
+        # Per file: a second copy of an episode doesn't make the episode longer.
+        "avg_runtime_s": seconds / row["timed_files"] if row["timed_files"] else None,
+    }
+
+
+_STAT_KEYS = ("files", "bytes", "seconds", "timed_bytes", "timed_files", "episodes",
+              "dup_episodes", "extra_files")  # fmt: skip
+
+
+def show_episode_stats(conn: sqlite3.Connection, title_id: int) -> dict[str, Any]:
+    """Averages for the whole show (specials excluded), per season, and for specials."""
+    rows = conn.execute(_episode_stats_sql("f.title_id = ?"), (title_id,)).fetchall()
+    seasons = {(None if r["season"] == -1 else r["season"]): _averages(r) for r in rows}
+    regular = [r for r in rows if r["season"] != 0]
+    show = None
+    if regular:
+        show = _averages({k: sum((r[k] or 0) for r in regular) for k in _STAT_KEYS})
+    return {"show": show, "seasons": seasons, "specials": seasons.get(0)}
+
+
 # --------------------------------------------------------------------------- titles
 
 TITLE_SORTS = {
@@ -112,6 +188,7 @@ TITLE_SORTS = {
     "files": "t.video_count",
     "library": "l.name",
     "updated": "t.updated_at",
+    "avg_episode": "ep.avg_bytes",
 }
 BADGES = {
     "4k": "has_4k",
@@ -184,16 +261,20 @@ def titles(conn: sqlite3.Connection, q: Mapping[str, str]) -> Page:
     page, pages = _page(total, _int(q.get("page")))
     sort = TITLE_SORTS.get(q.get("sort", ""), TITLE_SORTS["size"])
     direction = "ASC" if q.get("dir") == "asc" else "DESC"
-    if q.get("sort") in {None, ""} and not q.get("dir"):
-        direction = "DESC"
     rows = _rows(
         conn.execute(
             f"""
         SELECT t.id, t.kind, t.name, t.year, l.name AS library, t.video_count, t.version_count,
                t.folder_size_bytes AS bytes, t.group_key,
                (SELECT count(*) FROM seasons s WHERE s.title_id = t.id) AS seasons,
+               ep.avg_bytes AS avg_episode_bytes, ep.episodes, ep.dup_episodes,
                {", ".join(f"{sql} AS {name}" for name, sql in badge_sql.items())}
         FROM titles t JOIN libraries l ON l.id = t.library_id
+        LEFT JOIN (
+            SELECT title_id, sum(episodes) AS episodes, sum(dup_episodes) AS dup_episodes,
+                   1.0 * sum(bytes) / sum(episodes) AS avg_bytes
+            FROM ({_episode_stats_sql()}) WHERE season <> 0 GROUP BY title_id
+        ) AS ep ON ep.title_id = t.id
         WHERE {sql_where}
         ORDER BY {sort} {direction} NULLS LAST, lower(t.name)
         LIMIT ? OFFSET ?
@@ -248,12 +329,16 @@ def title_detail(conn: sqlite3.Connection, title_id: int) -> dict[str, Any] | No
     by_season: dict[int | None, list[dict[str, Any]]] = defaultdict(list)
     for f in files:
         by_season[f["season_number"]].append(f)
+    episode_stats = show_episode_stats(conn, title_id) if title["kind"] == "show" else None
+    for season in seasons:
+        season["stats"] = (episode_stats or {}).get("seasons", {}).get(season["season_number"])
     return {
         "title": dict(title),
         "linked": linked,
         "seasons": seasons,
         "files": files,
         "by_season": dict(by_season),
+        "episode_stats": episode_stats,
     }
 
 

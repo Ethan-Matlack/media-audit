@@ -212,3 +212,9 @@ form.inline { display: inline; }
   .bars li { grid-template-columns: minmax(5rem, 40%) 1fr auto; }
   .tile-value { font-size: 1.35rem; }
 }
+
+.dup { color: var(--warn); white-space: nowrap; cursor: help; }
+details.explain { margin-top: 0.75rem; color: var(--text-2); }
+details.explain summary { cursor: pointer; color: var(--accent-ink); }
+details.explain ul { margin: 0.5rem 0 0; padding-left: 1.2rem; max-width: 70rem; }
+details.explain li { margin-bottom: 0.3rem; }

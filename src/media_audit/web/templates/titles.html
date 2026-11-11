@@ -38,6 +38,7 @@
     {{ sort_th("Library", "library", params, "asc") }}
     <th>Has</th>
     {{ sort_th("Videos", "files", params, "desc", "num") }}
+    {{ sort_th("Avg episode", "avg_episode", params, "desc", "num") }}
     {{ sort_th("Size", "size", params, "desc", "num") }}
   </tr></thead>
   <tbody>
@@ -51,14 +52,21 @@
       <td>{{ t.library }}</td>
       <td>{{ title_badges(t) }}</td>
       <td class="num">{{ t.video_count | num }}</td>
+      <td class="num nowrap">{% if t.avg_episode_bytes %}{{ t.avg_episode_bytes | bytes(2) }}{% if t.dup_episodes %}<span class="dup" title="{{ t.dup_episodes }} episode{{ 's' if t.dup_episodes != 1 }} have more than one file; all their files count toward the average"> *</span>{% endif %}{% endif %}</td>
       <td class="num">{{ t.bytes | bytes(2) }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="6" class="muted">No titles match these filters.</td></tr>
+    <tr><td colspan="7" class="muted">No titles match these filters.</td></tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
 {{ pager(page, params) }}
+<p class="muted small">
+  <strong>Avg episode</strong> (shows only): size of the episode video files ÷ number of
+  episodes, for the whole show <strong>excluding specials (Season 0)</strong>. Subtitles,
+  artwork and extras aren't counted. <span class="dup">*</span> Some episodes have more than
+  one file; each still counts as one episode, but all their files' sizes are included.
+</p>
 </div>
 {% endblock %}

@@ -51,9 +51,16 @@
 <section class="tiles">
   <div class="tile"><span class="tile-label">Size</span><span class="tile-value">{{ title.folder_size_bytes | bytes(2) }}</span>
     <span class="tile-sub">{{ title.media_size_bytes | bytes }} video · {{ title.other_size_bytes | bytes }} other</span></div>
-  <div class="tile"><span class="tile-label">{{ "Episodes" if title.kind == "show" else "Videos" }}</span><span class="tile-value">{{ title.video_count | num }}</span>
+  <div class="tile"><span class="tile-label">{{ "Episode files" if title.kind == "show" else "Videos" }}</span><span class="tile-value">{{ title.video_count | num }}</span>
     <span class="tile-sub">{{ title.file_count | num }} files{% if title.kind == "movie" and title.version_count > 1 %} · {{ title.version_count }} versions{% endif %}</span></div>
   {% if seasons %}<div class="tile"><span class="tile-label">Seasons</span><span class="tile-value">{{ seasons | length }}</span><span class="tile-sub">&nbsp;</span></div>{% endif %}
+  {% set ep = episode_stats.show if episode_stats else none %}
+  {% if ep %}
+  <div class="tile"><span class="tile-label">Avg episode size</span><span class="tile-value">{{ ep.avg_bytes | bytes(2) }}</span>
+    <span class="tile-sub">{{ ep.episodes | num }} episodes{% if episode_stats.specials %}, specials not included{% endif %}</span></div>
+  <div class="tile"><span class="tile-label">Avg GB per hour</span><span class="tile-value">{{ '%.2f' % ep.gb_per_hour if ep.gb_per_hour else "–" }}</span>
+    <span class="tile-sub">{{ ep.avg_runtime_s | runtime }} average length</span></div>
+  {% endif %}
   <div class="tile"><span class="tile-label">IDs</span>
     <span class="tile-sub ids">
       {% if title.tmdb_id %}<a href="https://www.themoviedb.org/{{ 'tv' if title.kind == 'show' else 'movie' }}/{{ title.tmdb_id }}" rel="noreferrer">TMDB {{ title.tmdb_id }}</a>{% endif %}
@@ -76,13 +83,32 @@
   <h2>Seasons</h2>
   <div class="table-wrap">
   <table class="data">
-    <thead><tr><th>Season</th><th class="num">Episodes</th><th class="num">Size</th></tr></thead>
+    <thead><tr><th>Season</th><th class="num">Episodes</th><th class="num">Avg episode</th>
+      <th class="num">GB/h</th><th class="num">Avg length</th><th class="num">Size</th></tr></thead>
     <tbody>{% for s in seasons %}
-      <tr><td><a href="#season-{{ s.season_number if s.season_number is not none else 'unknown' }}">{{ "Specials" if s.season_number == 0 else ("Season " ~ s.season_number if s.season_number is not none else "Unknown") }}</a></td>
-        <td class="num">{{ s.episode_count | num }}</td><td class="num">{{ s.bytes | bytes(2) }}</td></tr>
+      {% set st = s.stats %}
+      <tr class="{{ 'dim' if s.season_number == 0 }}">
+        <td><a href="#season-{{ s.season_number if s.season_number is not none else 'unknown' }}">{{ "Specials" if s.season_number == 0 else ("Season " ~ s.season_number if s.season_number is not none else "Unknown") }}</a>
+          {% if s.season_number == 0 %}<span class="muted small">not in show averages</span>{% endif %}</td>
+        <td class="num">{{ (st.episodes if st else s.episode_count) | num }}
+          {% if st and st.dup_episodes %}<div class="small dup" title="{{ st.dup_episodes }} episode{{ 's' if st.dup_episodes != 1 }} have more than one file ({{ st.extra_files }} extra file{{ 's' if st.extra_files != 1 }}). Their sizes all count toward this season's average.">{{ st.dup_episodes }} with extra copies</div>{% endif %}</td>
+        <td class="num">{{ st.avg_bytes | bytes(2) if st and st.avg_bytes else "–" }}</td>
+        <td class="num">{{ '%.2f' % st.gb_per_hour if st and st.gb_per_hour else "–" }}</td>
+        <td class="num">{{ st.avg_runtime_s | runtime if st else "–" }}</td>
+        <td class="num">{{ s.bytes | bytes(2) }}</td></tr>
     {% endfor %}</tbody>
   </table>
   </div>
+  <details class="small explain">
+    <summary>How the averages are worked out</summary>
+    <ul>
+      <li><strong>Only episode video files count.</strong> Subtitles, artwork, <code>.nfo</code> files and extras are left out, so averages can be smaller than size ÷ episodes from the Size column.</li>
+      <li><strong>Specials (Season 0) are left out of the show-wide averages</strong> at the top of the page. They're often a different length or quality from the main seasons, so they get their own row instead.</li>
+      <li><strong>A file covering several episodes</strong> (e.g. S01E01–E03) counts as that many episodes.</li>
+      <li><strong>Duplicates:</strong> when an episode has more than one file (two qualities, or a leftover copy), it still counts as one episode but <em>all</em> its files' sizes count. The average is what each episode costs on disk, so duplicates raise it; seasons with them are marked "with extra copies".{% if ep and ep.dup_episodes %} This show has {{ ep.dup_episodes | num }} such episode{{ "s" if ep.dup_episodes != 1 }} outside specials.{% endif %}</li>
+      <li><strong>GB/h</strong> is total size ÷ total running time, so long and short episodes are weighted fairly. <strong>Avg length</strong> is per file.</li>
+    </ul>
+  </details>
 </section>
 {% for season, rows in by_season.items() %}
 <details class="card season" id="season-{{ season if season is not none else 'unknown' }}" {% if by_season | length <= 2 %}open{% endif %}>

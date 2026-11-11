@@ -302,3 +302,51 @@ def test_progress_logging_is_throttled(config_file: Path, caplog: pytest.LogCapt
     assert any(m.startswith("scan finished: ok") for m in msgs)
     # Not one line per file: the phase change, then at most one line per 30 s.
     assert sum(m.startswith("analyzed ") for m in msgs) <= 2
+
+
+def test_episode_averages(
+    make_tree: Callable[[str, dict[str, int | str]], Path], tmp_path: Path
+) -> None:
+    from media_audit.web import queries
+
+    tv = make_tree("tv2", {
+        "Show (2010)/Season 01/Show (2010) - S01E01 - A.mkv": 1000,
+        "Show (2010)/Season 01/Show (2010) - S01E02 - B [WEBDL-720p].mkv": 1000,
+        "Show (2010)/Season 01/Show (2010) - S01E02 - B [Bluray-1080p].mkv": 3000,  # duplicate
+        "Show (2010)/Season 01/Show (2010) - S01E03-E04 - C.mkv": 2000,  # two episodes
+        "Show (2010)/Season 01/Show (2010) - S01E01 - A.en.srt": 500,  # not counted
+        "Show (2010)/Specials/Show (2010) - S00E01 - Special.mkv": 9000,
+    })  # fmt: skip
+    cfg_file = tmp_path / "tv2.yml"
+    cfg_file.write_text(
+        f"database: {tmp_path / 'tv2.db'}\n"
+        f"libraries:\n  - {{name: tv, path: {tv}, type: tv}}\nscan:\n  schedule: off\n"
+    )
+    service = _service(cfg_file)
+    _scan(service)
+    conn = connect(service.config().database)
+    tid = conn.execute("SELECT id FROM titles WHERE name = 'Show'").fetchone()[0]
+
+    stats = queries.show_episode_stats(conn, tid)
+    s1 = stats["seasons"][1]
+    assert (s1["episodes"], s1["bytes"], s1["dup_episodes"], s1["extra_files"]) == (4, 7000, 1, 1)
+    assert s1["avg_bytes"] == 1750
+    assert stats["specials"]["episodes"] == 1 and stats["specials"]["avg_bytes"] == 9000
+    assert stats["show"]["avg_bytes"] == 1750  # specials left out
+    # Every file has the same running time; a duplicate doesn't make an episode longer.
+    one = conn.execute(
+        "SELECT duration_s FROM video_info JOIN files ON files.id = file_id "
+        "WHERE filename LIKE '%S01E01%' AND is_video = 1"
+    ).fetchone()[0]
+    assert stats["show"]["avg_runtime_s"] == pytest.approx(one)
+
+    listed = queries.titles(conn, {"kind": "show", "sort": "avg_episode"}).rows[0]
+    assert listed["avg_episode_bytes"] == 1750 and listed["dup_episodes"] == 1
+
+    client = TestClient(create_app(service))
+    page = client.get(f"/titles/{tid}").text
+    assert "Avg episode size" in page and "specials not included" in page
+    assert "1 with extra copies" in page and "not in show averages" in page
+    assert "How the averages are worked out" in page
+    listing = client.get("/titles?sort=avg_episode").text
+    assert "excluding specials" in listing and 'class="dup"' in listing
