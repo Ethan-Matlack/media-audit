@@ -334,6 +334,12 @@ def main(argv: list[str] | None = None) -> int:
     base = logging.INFO if args.command == "serve" else logging.WARNING
     level = max(logging.DEBUG, base - 10 * min(args.verbose, 2))
     logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    if args.command == "serve":
+        # Container start: make it obvious in the log. One-off commands (stats --json,
+        # scan) stay quiet so their output can be piped.
+        from media_audit.splash import render
+
+        print(render(), flush=True)
     try:
         initialized = _auto_init(args)
         if initialized is not None:
