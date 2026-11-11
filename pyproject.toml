@@ -1,6 +1,6 @@
 [project]
 name = "media-audit"
-version = "0.1.0.dev0"
+dynamic = ["version"]  # from src/media_audit/__init__.py (the only place to change it)
 description = "Scan a media library on disk and report what's actually in it."
 readme = "README.md"
 license = "MIT"
@@ -43,6 +43,9 @@ dev = [
 [build-system]
 requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/media_audit/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/media_audit"]

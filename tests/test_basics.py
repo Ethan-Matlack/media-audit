@@ -145,3 +145,26 @@ def test_newer_schema_refused(tmp_path: Path) -> None:
     conn.execute("UPDATE meta SET value = '999' WHERE key = 'schema_version'")
     with pytest.raises(MigrationError, match="newer"):
         apply_migrations(conn)
+
+
+# --------------------------------------------------------------------------- version
+
+
+def test_version_is_plain_semver() -> None:
+    import re
+    from importlib.metadata import version
+
+    from media_audit import __version__
+
+    assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)
+    assert version("media-audit") == __version__  # pyproject reads it from __init__.py
+
+
+def test_splash(monkeypatch: pytest.MonkeyPatch) -> None:
+    from media_audit import __author__, __version__
+    from media_audit.splash import render
+
+    monkeypatch.setenv("HOST_CONTAINERNAME", "media-audit-test")
+    text = render()
+    assert "m e d i a - a u d i t" in text
+    assert __version__ in text and __author__ in text and "media-audit-test" in text

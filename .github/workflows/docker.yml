@@ -28,6 +28,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Release tag matches __version__
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/media_audit/__init__.py)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match __version__ $version in src/media_audit/__init__.py"
+            exit 1
+          fi
       - uses: docker/setup-buildx-action@v3
       - name: Build test image
         uses: docker/build-push-action@v6

@@ -1,3 +1,7 @@
 """media-audit: scan a media library on disk and report what's actually in it."""
 
-__version__ = "0.1.0.dev0"
+# The one place the version lives (pyproject.toml reads it from here). Plain X.Y.Z;
+# release by tagging vX.Y.Z (CI checks the tag matches).
+__version__ = "0.2.0"
+__author__ = "Ethan Matlack"
+__url__ = "https://github.com/Ethan-Matlack/media-audit"

@@ -350,3 +350,16 @@ def test_episode_averages(
     assert "How the averages are worked out" in page
     listing = client.get("/titles?sort=avg_episode").text
     assert "excluding specials" in listing and 'class="dup"' in listing
+
+
+def test_splash_only_for_serve(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from media_audit import cli
+    from media_audit.web import server
+
+    monkeypatch.setattr(server, "serve", lambda cfg, **kw: 0)
+    assert cli.main(["-c", str(config_file), "serve"]) == 0
+    assert "m e d i a - a u d i t" in capsys.readouterr().out
+    assert cli.main(["-c", str(config_file), "stats", "--json"]) in (0, 2)
+    assert "m e d i a - a u d i t" not in capsys.readouterr().out
