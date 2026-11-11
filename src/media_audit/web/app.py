@@ -34,6 +34,7 @@ from starlette.staticfiles import StaticFiles
 
 from media_audit import __version__
 from media_audit.config import ConfigError
+from media_audit.db import connect, transaction, utcnow
 from media_audit.web import queries
 from media_audit.web.data import ReadDB
 from media_audit.web.service import ScanService
@@ -232,6 +233,9 @@ def create_app(service: ScanService) -> Starlette:
     def render(request: Request, template: str, status_code: int = 200, **ctx: Any) -> Response:
         conn = ctx.pop("_conn", None)
         libraries = db.cached(("libraries",), lambda: queries.libraries(conn)) if conn else []
+        issue_count = (
+            db.cached(("issue_count",), lambda: queries.open_issue_count(conn)) if conn else 0
+        )
         context = {
             "request": request,
             "params": dict(request.query_params),
@@ -241,6 +245,7 @@ def create_app(service: ScanService) -> Starlette:
             "first_start": service.first_start,
             "nav": template.split(".")[0],
             "libraries": libraries,
+            "issue_count": issue_count,
             **ctx,
         }
         html = env.get_template(template).render(context)
@@ -282,7 +287,78 @@ def create_app(service: ScanService) -> Starlette:
         detail = db.cached(("title", tid), lambda: queries.title_detail(conn, tid))
         if detail is None:
             return render(request, "notfound.html", status_code=404, _conn=conn)
-        return render(request, "title.html", _conn=conn, **detail)
+        title_issues = db.cached(("title_issues", tid), lambda: queries.title_issues(conn, tid))
+        return render(request, "title.html", _conn=conn, issues=title_issues, **detail)
+
+    def issues(request: Request, conn: sqlite3.Connection) -> Response:
+        params = request.query_params
+        data = db.cached(_key("issues", params), lambda: queries.issues(conn, params))
+        return render(request, "issues.html", _conn=conn, data=data)
+
+    async def issues_csv(request: Request) -> Response:
+        path = db_path()
+        if path is None or not path.exists():
+            return PlainTextResponse("no database yet", status_code=404)
+        params = dict(request.query_params)
+
+        def stream() -> Iterator[str]:
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            with db.connection(path) as conn:
+                assert conn is not None
+                for row in queries.issues_csv_rows(conn, params):
+                    writer.writerow(row)
+            yield buf.getvalue()
+
+        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        return StreamingResponse(
+            stream(),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="media-audit-issues-{stamp}.csv"'
+            },
+        )
+
+    def _set_ignored(key: str, ignore: bool) -> bool:
+        path = db_path()
+        if path is None or not path.exists():
+            return False
+        conn = connect(path, migrate=False)
+        try:
+            with transaction(conn):
+                if not ignore:
+                    return (
+                        conn.execute("DELETE FROM flag_ignores WHERE key = ?", (key,)).rowcount > 0
+                    )
+                row = conn.execute(
+                    "SELECT fingerprint, code FROM flags WHERE key = ?", (key,)
+                ).fetchone()
+                if row is None:
+                    return False
+                conn.execute(
+                    "INSERT INTO flag_ignores (key, fingerprint, code, created_at) "
+                    "VALUES (?, ?, ?, ?) ON CONFLICT (key) DO UPDATE SET "
+                    "fingerprint = excluded.fingerprint, created_at = excluded.created_at",
+                    (key, row["fingerprint"], row["code"], utcnow()),
+                )
+                return True
+        finally:
+            conn.close()
+
+    def _ignore_endpoint(ignore: bool) -> Any:
+        async def endpoint(request: Request) -> Response:
+            if not _same_origin(request):
+                return PlainTextResponse("cross-origin request refused", status_code=403)
+            key = request.query_params.get("key", "")
+            changed = await run_in_threadpool(_set_ignored, key, ignore)
+            if request.headers.get("accept", "").startswith("application/json"):
+                return JSONResponse({"ignored": ignore, "changed": changed},
+                                    status_code=200 if changed or not ignore else 404)  # fmt: skip
+            nxt = request.query_params.get("next", "/issues")
+            return RedirectResponse(nxt if nxt.startswith("/") and not nxt.startswith("//")
+                                    else "/issues", status_code=303)  # fmt: skip
+
+        return endpoint
 
     def files(request: Request, conn: sqlite3.Connection) -> Response:
         params = request.query_params
@@ -364,6 +440,10 @@ def create_app(service: ScanService) -> Starlette:
         Route("/titles/{title_id:int}", with_db(title)),
         Route("/files", with_db(files)),
         Route("/files.csv", files_csv),
+        Route("/issues", with_db(issues)),
+        Route("/issues.csv", issues_csv),
+        Route("/issues/ignore", _ignore_endpoint(True), methods=["POST"]),
+        Route("/issues/unignore", _ignore_endpoint(False), methods=["POST"]),
         Route("/scans", scans),
         Route("/scans/run", scan_now, methods=["POST"]),
         Route("/scans/stop", scan_stop, methods=["POST"]),
@@ -385,6 +465,8 @@ def create_app(service: ScanService) -> Starlette:
                 db.cached(_key("titles", empty), lambda: queries.titles(conn, empty))
                 db.cached(_key("files", empty), lambda: queries.files(conn, empty))
                 db.cached(("file_options",), lambda: queries.file_filter_options(conn))
+                db.cached(("issue_count",), lambda: queries.open_issue_count(conn))
+                db.cached(_key("issues", empty), lambda: queries.issues(conn, empty))
         except Exception:  # only an optimisation; pages compute on demand anyway
             log.exception("cache warm-up failed")
 

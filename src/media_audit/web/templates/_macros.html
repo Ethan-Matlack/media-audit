@@ -61,3 +61,20 @@
   </select>
 </label>
 {% endmacro %}
+
+{# Severity: icon + word, never colour alone. #}
+{% macro severity_badge(sev) %}
+<span class="sev sev-{{ sev }}"><span aria-hidden="true">{{ {"error": "✕", "warning": "⚠", "info": "ℹ"}[sev] }}</span> {{ {"error": "Error", "warning": "Warning", "info": "Info"}[sev] }}</span>
+{% endmacro %}
+
+{% macro ignore_button(r, here) %}
+{% if r.ignored %}
+<form method="post" action="/issues/unignore?key={{ r.key | urlencode }}&next={{ here | urlencode }}" class="inline" data-ignore-form>
+  <button type="submit" class="button small-btn">Unignore</button>
+</form>
+{% else %}
+<form method="post" action="/issues/ignore?key={{ r.key | urlencode }}&next={{ here | urlencode }}" class="inline" data-ignore-form>
+  <button type="submit" class="button small-btn" title="Hide this issue until the files involved change">Ignore</button>
+</form>
+{% endif %}
+{% endmacro %}

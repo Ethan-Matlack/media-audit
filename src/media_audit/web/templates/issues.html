@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% from "_macros.html" import severity_badge, ignore_button %}
+{% block title %}Issues · media-audit{% endblock %}
+{% block content %}
+{% set here = request.url.path ~ qs(params) %}
+<div class="page-head">
+  <h1>Issues</h1>
+  <a class="button" href="/issues.csv{{ qs(params, page=None) }}" download>Export CSV</a>
+</div>
+
+<section class="tiles" aria-label="Issues by category">
+  {% for cat, label in data.categories.items() %}
+  {% set t = data.tiles[cat] %}
+  <a class="tile {{ 'selected' if params.category == cat }}" href="{{ qs(params, category=(None if params.category == cat else cat), code=None, page=None) }}">
+    <span class="tile-label">{{ label }}</span>
+    <span class="tile-value">{{ t.total | num }}</span>
+    <span class="tile-sub">
+      {% set parts = [] %}
+      {% if t.error %}{% set _ = parts.append(t.error ~ " error" ~ ("s" if t.error != 1 else "")) %}{% endif %}
+      {% if t.warning %}{% set _ = parts.append(t.warning ~ " warning" ~ ("s" if t.warning != 1 else "")) %}{% endif %}
+      {% if t.info %}{% set _ = parts.append(t.info ~ " info") %}{% endif %}
+      {{ parts | join(" · ") if parts else "none" }}
+    </span>
+  </a>
+  {% endfor %}
+</section>
+
+<form method="get" class="filters" data-autosubmit>
+  <label>Library
+    <select name="library"><option value="">All</option>
+      {% for l in libraries if l.enabled %}<option value="{{ l.name }}" {% if params.library == l.name %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Severity
+    <select name="severity"><option value="">All</option>
+      {% for v, label in [("error", "Errors"), ("warning", "Warnings"), ("info", "Info")] %}
+      <option value="{{ v }}" {% if params.severity == v %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Category
+    <select name="category"><option value="">All</option>
+      {% for cat, label in data.categories.items() %}<option value="{{ cat }}" {% if params.category == cat %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="check"><input type="checkbox" name="ignored" value="1" {% if params.ignored == "1" %}checked{% endif %}> Show ignored{% if data.ignored_total %} ({{ data.ignored_total | num }}){% endif %}</label>
+  {% if params.code %}<input type="hidden" name="code" value="{{ params.code }}">{% endif %}
+  <noscript><button type="submit">Filter</button></noscript>
+</form>
+
+<div id="results">
+{% if data.code %}
+<p class="small"><a href="{{ qs(params, code=None, page=None) }}">← All issues</a></p>
+{% endif %}
+{% for g in data.groups %}
+{% set c = g.check %}
+<details class="card issue-group" id="check-{{ c.code }}" {% if c.severity != "info" or data.code or data.groups | length == 1 %}open{% endif %}>
+  <summary>
+    <h2>{{ severity_badge(c.severity) }} {{ c.heading }}
+      <span class="muted small">{{ g.total | num }}{% if g.recoverable %} · {{ g.recoverable | bytes }} recoverable{% endif %}{% if g.ignored %} · {{ g.ignored }} ignored{% endif %}</span></h2>
+  </summary>
+  <p class="muted small explain-line">{{ c.explain }}</p>
+  <div class="table-wrap">
+  <table class="data issues">
+    <thead><tr><th>Library</th><th>Title</th><th>Issue</th><th class="actions-col"><span class="visually-hidden">Actions</span></th></tr></thead>
+    <tbody>
+    {% for r in g.rows %}
+      <tr class="{{ 'ignored' if r.ignored }}" data-issue-row>
+        <td class="nowrap">{{ r.library }}</td>
+        <td class="path">
+          {% if r.title_id %}<a href="/titles/{{ r.title_id }}">{{ r.title_name }}{% if r.title_year %} ({{ r.title_year }}){% endif %}</a>{% endif %}
+          {% if r.file_path %}<div class="muted small">{{ r.file_path }}</div>{% endif %}
+        </td>
+        <td>
+          {{ r.message }}
+          {% if r.data and r.data.files %}
+          <ul class="file-list small muted">{% for f in r.data.files %}<li>{{ f.path }} <span class="nowrap">· {{ f.size | bytes }}</span></li>{% endfor %}</ul>
+          {% endif %}
+          {% if r.data and r.data.titles %}
+          <div class="small">{% for t in r.data.titles %}<a href="/titles/{{ t.id }}">{{ t.library }}: {{ t.name }}{% if t.year %} ({{ t.year }}){% endif %}</a>{{ ", " if not loop.last }}{% endfor %}</div>
+          {% endif %}
+        </td>
+        <td class="actions-col">{{ ignore_button(r, here) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if not data.code and g.total > g.rows | length %}
+  <p class="small"><a href="{{ qs(params, code=c.code, page=None) }}">Show all {{ g.total | num }} →</a></p>
+  {% endif %}
+  {% if data.code and g.pages > 1 %}
+  <nav class="pager" aria-label="Pages">
+    {% if g.page > 1 %}<a href="{{ qs(params, page=g.page - 1) }}" rel="prev">← Prev</a>{% else %}<span class="muted">← Prev</span>{% endif %}
+    <span>Page {{ g.page }} of {{ g.pages }}</span>
+    {% if g.page < g.pages %}<a href="{{ qs(params, page=g.page + 1) }}" rel="next">Next →</a>{% else %}<span class="muted">Next →</span>{% endif %}
+  </nav>
+  {% endif %}
+</details>
+{% else %}
+<section class="card empty-inline">
+  <p>{% if params | reject("in", ["page"]) | list %}No issues match these filters.{% else %}No issues found. Nice.{% endif %}</p>
+</section>
+{% endfor %}
+<p class="muted small">Issues are worked out from the last scan's data and refreshed after every scan.
+  Ignoring an issue hides it until the files involved change. Thresholds and which checks
+  run are set under <code>flags:</code> in the config.</p>
+</div>
+{% endblock %}

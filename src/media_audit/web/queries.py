@@ -268,6 +268,10 @@ def titles(conn: sqlite3.Connection, q: Mapping[str, str]) -> Page:
                t.folder_size_bytes AS bytes, t.group_key,
                (SELECT count(*) FROM seasons s WHERE s.title_id = t.id) AS seasons,
                ep.avg_bytes AS avg_episode_bytes, ep.episodes, ep.dup_episodes,
+               (SELECT count(*) FROM flags fl LEFT JOIN flag_ignores ig
+                  ON ig.key = fl.key AND ig.fingerprint = fl.fingerprint
+                WHERE fl.title_id = t.id AND ig.key IS NULL
+                  AND fl.severity IN ('error', 'warning')) AS open_issues,
                {", ".join(f"{sql} AS {name}" for name, sql in badge_sql.items())}
         FROM titles t JOIN libraries l ON l.id = t.library_id
         LEFT JOIN (
@@ -587,3 +591,154 @@ def last_scan(conn: sqlite3.Connection) -> dict[str, Any] | None:
         "SELECT id, started_at, finished_at, status FROM scans ORDER BY id DESC LIMIT 1"
     ).fetchone()
     return dict(row) if row else None
+
+
+# --------------------------------------------------------------------------- issues
+
+ISSUE_GROUP_LIMIT = 100  # rows shown per check on the main Issues page
+ISSUE_PAGE_SIZE = 200  # rows per page when looking at a single check
+
+_ISSUE_SELECT = """
+    SELECT fl.id, fl.code, fl.severity, fl.key, fl.title_id, fl.file_id, fl.season_number,
+           fl.message, fl.data, fl.bytes_recoverable, l.name AS library,
+           t.name AS title_name, t.year AS title_year, t.kind AS title_kind,
+           f.rel_path AS file_path, f.size_bytes AS file_size,
+           (ig.key IS NOT NULL) AS ignored
+    FROM flags fl
+    JOIN libraries l ON l.id = fl.library_id
+    LEFT JOIN titles t ON t.id = fl.title_id
+    LEFT JOIN files f ON f.id = fl.file_id
+    LEFT JOIN flag_ignores ig ON ig.key = fl.key AND ig.fingerprint = fl.fingerprint
+"""
+
+
+def _issue_row(r: sqlite3.Row) -> dict[str, Any]:
+    row = dict(r)
+    row["data"] = json.loads(row["data"]) if row["data"] else None
+    return row
+
+
+def _issue_filters(q: Mapping[str, str]) -> tuple[str, list[Any]]:
+    """WHERE clause for the library/severity/category/check/ignored filters."""
+    from media_audit.rules.flags import CATEGORIES, CHECKS, SEVERITY_ORDER
+
+    where, params = ["1 = 1"], []
+    if q.get("library"):
+        where.append("l.name = ?")
+        params.append(q["library"])
+    if q.get("severity") in SEVERITY_ORDER:
+        where.append("fl.severity = ?")
+        params.append(q["severity"])
+    if q.get("category") in CATEGORIES:
+        codes = [c for c, chk in CHECKS.items() if chk.category == q["category"]]
+        where.append(f"fl.code IN ({','.join('?' * len(codes))})")
+        params.extend(codes)
+    if q.get("code") in CHECKS:
+        where.append("fl.code = ?")
+        params.append(q["code"])
+    if q.get("ignored") != "1":
+        where.append("ig.key IS NULL")
+    return " AND ".join(where), params
+
+
+def issues(conn: sqlite3.Connection, q: Mapping[str, str]) -> dict[str, Any]:
+    from media_audit.rules.flags import CATEGORIES, CHECKS, SEVERITY_ORDER
+
+    code = q.get("code") if q.get("code") in CHECKS else None
+    sql_where, params = _issue_filters(q)
+
+    # Tiles: counts for the filtered set, ignoring the category/code filters so the tiles
+    # stay useful for switching between categories.
+    tile_where, tile_params = ["1 = 1"], []
+    if q.get("library"):
+        tile_where.append("l.name = ?")
+        tile_params.append(q["library"])
+    tiles = {c: {"error": 0, "warning": 0, "info": 0, "total": 0} for c in CATEGORIES}
+    ignored_total = 0
+    for r in conn.execute(
+        f"SELECT fl.code, fl.severity, (ig.key IS NOT NULL) AS ignored, count(*) AS n "
+        f"FROM flags fl JOIN libraries l ON l.id = fl.library_id "
+        f"LEFT JOIN flag_ignores ig ON ig.key = fl.key AND ig.fingerprint = fl.fingerprint "
+        f"WHERE {' AND '.join(tile_where)} GROUP BY 1, 2, 3",
+        tile_params,
+    ):
+        if r["ignored"]:
+            ignored_total += r["n"]
+            continue
+        cat = CHECKS[r["code"]].category if r["code"] in CHECKS else "notes"
+        tiles[cat][r["severity"]] += r["n"]
+        tiles[cat]["total"] += r["n"]
+
+    rows = [
+        _issue_row(r)
+        for r in conn.execute(
+            f"{_ISSUE_SELECT} WHERE {sql_where} "
+            "ORDER BY l.name, lower(coalesce(t.name, f.rel_path)), fl.season_number, fl.message",
+            params,
+        )
+    ]
+    by_code: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        by_code[r["code"]].append(r)
+    order = list(CHECKS)
+    groups = []
+    for c in sorted(by_code, key=lambda c: (SEVERITY_ORDER[CHECKS[c].severity],
+                                            order.index(c) if c in order else 99)):  # fmt: skip
+        items = by_code[c]
+        total = len(items)
+        page, pages = 1, 1
+        if code:
+            page, pages = _page_of(total, _int(q.get("page")), ISSUE_PAGE_SIZE)
+            shown = items[(page - 1) * ISSUE_PAGE_SIZE : page * ISSUE_PAGE_SIZE]
+        else:
+            shown = items[:ISSUE_GROUP_LIMIT]
+        groups.append({
+            "check": CHECKS[c], "total": total, "rows": shown, "page": page, "pages": pages,
+            "recoverable": sum(r["bytes_recoverable"] or 0 for r in items if not r["ignored"]),
+            "ignored": sum(1 for r in items if r["ignored"]),
+        })  # fmt: skip
+    return {"tiles": tiles, "groups": groups, "ignored_total": ignored_total,
+            "total": len(rows), "code": code, "categories": CATEGORIES}  # fmt: skip
+
+
+def _page_of(total: int, page: int, size: int) -> tuple[int, int]:
+    pages = max(1, -(-total // size))
+    return min(max(1, page), pages), pages
+
+
+def issues_csv_rows(conn: sqlite3.Connection, q: Mapping[str, str]) -> Iterator[list[Any]]:
+    from media_audit.rules.flags import CHECKS
+
+    where, params = _issue_filters(q)
+    yield ["severity", "category", "check", "library", "title", "season", "file", "message",
+           "recoverable_bytes", "ignored"]  # fmt: skip
+    for r in conn.execute(
+        f"{_ISSUE_SELECT} WHERE {where} ORDER BY fl.severity, fl.code, l.name, t.name", params
+    ):
+        chk = CHECKS.get(r["code"])
+        yield [r["severity"], chk.category if chk else "", chk.heading if chk else r["code"],
+               r["library"], r["title_name"] or "", r["season_number"] or "",
+               r["file_path"] or "", r["message"], r["bytes_recoverable"] or "",
+               "yes" if r["ignored"] else ""]  # fmt: skip
+
+
+def open_issue_count(conn: sqlite3.Connection) -> int:
+    """Errors and warnings that aren't ignored (the nav badge and overview tile)."""
+    row = conn.execute(
+        "SELECT count(*) FROM flags fl LEFT JOIN flag_ignores ig "
+        "ON ig.key = fl.key AND ig.fingerprint = fl.fingerprint "
+        "WHERE ig.key IS NULL AND fl.severity IN ('error', 'warning')"
+    ).fetchone()
+    return int(row[0])
+
+
+def title_issues(conn: sqlite3.Connection, title_id: int) -> list[dict[str, Any]]:
+    from media_audit.rules.flags import CHECKS, SEVERITY_ORDER
+
+    rows = [_issue_row(r) for r in conn.execute(
+        f"{_ISSUE_SELECT} WHERE fl.title_id = ? ORDER BY fl.season_number, fl.message",
+        (title_id,))]  # fmt: skip
+    rows.sort(key=lambda r: (r["ignored"], SEVERITY_ORDER.get(r["severity"], 9)))
+    for r in rows:
+        r["check"] = CHECKS.get(r["code"])
+    return rows

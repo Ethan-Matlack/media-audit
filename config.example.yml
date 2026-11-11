@@ -55,7 +55,19 @@ languages:
   preferred_audio: [en]
   preferred_subtitles: []
 
-# Reserved for later phases (flags, naming rules, Radarr/Sonarr integrations).
-flags: {}
+# The Issues page. All optional; changes apply at the next scan or container start.
+flags:
+  # Checks to switch off everywhere, or per library (codes are listed in the README).
+  disabled: []                       # e.g. [no_ids, legacy_codec]
+  disabled_by_library: {}            # e.g. {anime: [no_preferred_audio]}
+  min_peers: 4            # episodes a season needs before they're compared with each other
+  short_runtime: 0.6      # episode shorter than 60% of its season's median length
+  bitrate_low: 0.4        # episode GB/h below 40% of its season's median
+  bitrate_high: 2.5       # ... or above 2.5x
+  movie_bitrate_low: 0.25 # movie GB/h below 25% of the median for its resolution
+  # Non-video, non-subtitle files expected in a library; anything else is a "stray file".
+  allowed_extensions: [nfo, jpg, jpeg, png, webp, gif, tbn, bif, xml, json, sfv, md5]
+
+# Reserved for later phases (naming rules, Radarr/Sonarr integrations).
 naming: {}
 integrations: {}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import video_summary %}
+{% from "_macros.html" import video_summary, severity_badge, ignore_button %}
 {% block title %}{{ title.name }} · media-audit{% endblock %}
 {% macro file_rows(rows, show_episode) %}
 <div class="table-wrap">
@@ -70,6 +70,30 @@
     </span></div>
 </section>
 <p class="muted small path">{{ title.folder_path }}</p>
+
+{% if issues %}
+{% set open_issues = issues | rejectattr("ignored") | list %}
+<details class="card issue-group" id="issues" {% if issues | length <= 8 %}open{% endif %}>
+  <summary><h2>Issues <span class="muted small">{{ open_issues | length }} open{% if issues | length > open_issues | length %} · {{ issues | length - open_issues | length }} ignored{% endif %}</span></h2></summary>
+  <p class="small">
+    {% for heading, items in open_issues | groupby("check.heading") %}{{ heading }} <span class="muted">×{{ items | length }}</span>{{ " · " if not loop.last }}{% endfor %}
+  </p>
+  <div class="table-wrap">
+  <table class="data issues">
+    <tbody>
+    {% for r in issues %}
+      <tr class="{{ 'ignored' if r.ignored }}" data-issue-row>
+        <td class="nowrap">{{ severity_badge(r.severity) }}</td>
+        <td><strong>{{ r.check.heading if r.check else r.code }}</strong><br>{{ r.message }}
+          {% if r.file_path %}<div class="muted small">{{ r.file_path }}</div>{% endif %}</td>
+        <td class="actions-col">{{ ignore_button(r, request.url.path) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endif %}
 
 {% if linked %}
 <section class="card">

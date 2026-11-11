@@ -114,6 +114,49 @@ class WebConfig(_Model):
     port: int = Field(default=8484, ge=1, le=65535)
 
 
+class FlagsConfig(_Model):
+    """The Issues checks (media_audit/rules/flags.py). Changes apply at the next scan or
+    container start."""
+
+    disabled: list[str] = Field(default_factory=list)
+    """Check codes to switch off everywhere, e.g. [no_ids, legacy_codec]."""
+
+    disabled_by_library: dict[str, list[str]] = Field(default_factory=dict)
+    """Library name -> check codes to switch off there, e.g. {anime: [no_preferred_audio]}."""
+
+    min_peers: int = Field(default=4, ge=2)
+    """Episodes a season needs before its files are compared with each other."""
+
+    short_runtime: float = Field(default=0.6, gt=0, lt=1)
+    """Flag an episode shorter than this fraction of its season's median running time."""
+
+    bitrate_low: float = Field(default=0.4, gt=0, lt=1)
+    """Flag an episode below this fraction of its season's median GB/hour."""
+
+    bitrate_high: float = Field(default=2.5, gt=1)
+    """Flag an episode above this multiple of its season's median GB/hour."""
+
+    movie_bitrate_low: float = Field(default=0.25, gt=0, lt=1)
+    """Flag a movie below this fraction of the median GB/hour of movies at its resolution."""
+
+    allowed_extensions: list[str] = Field(
+        default_factory=lambda: ["nfo", "jpg", "jpeg", "png", "webp", "gif", "tbn", "bif",
+                                 "xml", "json", "sfv", "md5"]
+    )  # fmt: skip
+    """Non-video, non-subtitle files that are expected in a library (artwork, metadata).
+    Anything else is reported as a stray file."""
+
+    @field_validator("allowed_extensions")
+    @classmethod
+    def _lower(cls, v: list[str]) -> list[str]:
+        return [e.lower().lstrip(".") for e in v]
+
+    def enabled(self, code: str, library: str | None = None) -> bool:
+        if code in self.disabled:
+            return False
+        return not (library and code in self.disabled_by_library.get(library, []))
+
+
 class LinkingConfig(_Model):
     """How titles in different libraries (e.g. ``movies`` and ``movies-4k``) are linked."""
 
@@ -141,8 +184,9 @@ class Config(_Model):
     languages: LanguagesConfig = Field(default_factory=LanguagesConfig)
     web: WebConfig = Field(default_factory=WebConfig)
 
+    flags: FlagsConfig = Field(default_factory=FlagsConfig)  # the Issues checks
+
     # Reserved for later phases; accepted now so configs written today keep working.
-    flags: dict[str, Any] = Field(default_factory=dict)
     naming: dict[str, Any] = Field(default_factory=dict)
     integrations: dict[str, Any] = Field(default_factory=dict)
 

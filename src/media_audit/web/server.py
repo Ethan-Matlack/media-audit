@@ -13,6 +13,7 @@ from starlette.applications import Starlette
 
 from media_audit.config import Config
 from media_audit.db import connect
+from media_audit.flags import ensure_flags
 from media_audit.web.app import create_app
 from media_audit.web.service import ScanService
 
@@ -43,8 +44,13 @@ def build(
 def serve(
     cfg: Config, *, config_path: Path | None, db_override: Path | None, first_start: bool = False
 ) -> int:
-    # Create / migrate the database up front so the UI can open it read-only.
-    connect(cfg.database).close()
+    # Create / migrate the database up front so the UI can open it read-only, and bring
+    # the Issues list up to date if the checks or their settings changed.
+    conn = connect(cfg.database)
+    try:
+        ensure_flags(conn, cfg)
+    finally:
+        conn.close()
     app, _ = build(config_path, db_override, first_start)
     log.info(
         "web UI on http://%s:%d (config: %s, database: %s)",

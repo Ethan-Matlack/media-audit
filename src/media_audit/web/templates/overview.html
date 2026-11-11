@@ -29,6 +29,7 @@
   <a class="tile" href="/titles?badge=hdr{{ lib_q }}"><span class="tile-label">HDR titles</span><span class="tile-value">{{ data.badges.hdr | num }}</span>
     <span class="tile-sub">{{ data.badges.dv | num }} with Dolby Vision</span></a>
   <a class="tile" href="/titles?badge=atmos{{ lib_q }}"><span class="tile-label">Atmos / DTS:X titles</span><span class="tile-value">{{ data.badges.atmos | num }}</span><span class="tile-sub">&nbsp;</span></a>
+  <a class="tile" href="/issues{{ ('?library=' ~ (library | urlencode)) if library else '' }}"><span class="tile-label">Issues</span><span class="tile-value">{{ issue_count | num }}</span><span class="tile-sub">errors and warnings, all libraries</span></a>
 </section>
 {% if t.analyze_errors or t.not_analyzed %}
 <p class="notice small">

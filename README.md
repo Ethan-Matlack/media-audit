@@ -1,7 +1,7 @@
 # media-audit
 
-> Working name. Status: **Phase 0 + 1 + web UI** (scanner, analyzer, rules, titles,
-> web UI with scheduled scans).
+> Working name. Status: **Phases 0–2 + web UI** (scanner, analyzer, rules, titles,
+> issues, web UI with scheduled scans).
 
 A self-hosted tool that scans a media library on disk and reports what's actually in
 it: storage per movie/show/season and technical details for every file (container,
@@ -17,6 +17,9 @@ The Docker container stays running. It serves a web UI and rescans on a schedule
   a page with its seasons and every file's video, audio and subtitle tracks.
 - **Files:** filter by anything (resolution, HDR, codec, audio format, language, group,
   source, size, unreadable files...), sort by size or GB per hour, and export to CSV.
+- **Issues:** unreadable files, duplicates, truncated episodes, mislabelled
+  resolutions, stray files, gaps in episode numbering and more, with the space you'd
+  recover and an **Ignore** button (see [Issues](#issues)).
 - **Scans:** history, live progress, **Scan now** and **Stop**.
 
 ## Quick start (Unraid)
@@ -195,6 +198,44 @@ Ranges (`mon-fri`), lists (`1,15`) and steps (`*/15`) work as usual. Rescans are
 so even hourly is fine. A scheduled scan that comes due while another is running is
 skipped.
 
+## Issues
+
+After every scan (and `rederive`), media-audit checks the library for problems using
+the data it already has; no media files are re-read. The **Issues** page groups them by
+check, errors first; the nav shows how many errors and warnings are open.
+
+| Code | Severity | What it means |
+|---|---|---|
+| `unreadable` | error | MediaInfo couldn't read a video stream: damaged, incomplete, or not video |
+| `disc_image` | error | `.iso`/`.img` instead of a video file |
+| `no_audio` | warning | video with no audio track |
+| `stray_file` | warning | not video, subtitles, artwork or metadata (partial downloads, `.txt`, `.dat`...); extras folders are exempt |
+| `duplicate_episode` | warning | one episode stored as several files; shows the space freed by keeping the largest |
+| `orphan_subtitle` | warning | subtitle file with no video of the same name |
+| `multi_version_movie` | info | several versions of one movie (often deliberate) |
+| `cross_library` | info | the same title in two libraries |
+| `short_runtime` | warning | episode much shorter than its season's median: often truncated or the wrong file |
+| `resolution_mismatch` | warning | filename says e.g. 1080p but the video isn't (upscales, mislabels) |
+| `bitrate_outlier` | info | GB/hour far from the rest of the season, or from movies at the same resolution |
+| `unnumbered_episode` | warning | no episode number in the filename |
+| `missing_episodes` | info | gaps in episode numbering within a season |
+| `no_ids` | info | no `{tmdb-…}`/`{tvdb-…}`/`{imdb-…}` in folder or file names |
+| `mixed_resolution_season` | info | one season at several resolutions |
+| `legacy_codec` | info | Xvid/DivX, MPEG-2, MPEG-1 or VC-1: upgrade candidates |
+| `no_preferred_audio` | info | no audio in `languages.preferred_audio` |
+
+Peer comparisons skip specials and seasons with fewer than `flags.min_peers` episodes.
+Gaps in episode numbers are counted from E01, or from the first episode when a season
+starts past E03 (absolute anime numbering); missing episodes after the last one present
+can't be detected without an online database.
+
+**Ignore** hides an issue you've accepted (a deliberate second version, a known short
+episode). It lasts until the files involved change, then the issue comes back. Ignores
+are kept in the database and survive rescans and `rederive`. **Show ignored** lists them.
+
+Thresholds, allowed file types and which checks run (globally or per library) are set
+under `flags:` in [config.example.yml](config.example.yml).
+
 ## Exploring the data
 
 The web UI covers the common questions. For anything else, the SQLite database is
@@ -220,6 +261,7 @@ src/media_audit/
   stats.py, cli.py
   init_config.py       starter config from a media folder (first start / init-config)
   cron.py              cron expressions for scheduled scans
+  flags.py             runs the Issues checks after each scan (rules/flags.py: the checks)
   web/                 `serve`: scan service + scheduler, Starlette app, Jinja templates,
                        static CSS/JS (no build step, no CDN)
 scripts/               fixture capture/generation, demo library

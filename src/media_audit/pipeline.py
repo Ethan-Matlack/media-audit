@@ -20,6 +20,7 @@ from media_audit import stats as stats_mod
 from media_audit.analyzer import Analyzer, AnalyzerError
 from media_audit.config import Config, LibraryConfig
 from media_audit.db import transaction, utcnow
+from media_audit.flags import compute_flags
 from media_audit.scanner import ScanError, sync_library
 from media_audit.store import derive_pending, ensure_rules_version, invalidate_all
 from media_audit.titles import link_titles, resolve_library
@@ -31,7 +32,7 @@ log = logging.getLogger(__name__)
 class ProgressEvent:
     """Where a running scan is. ``done``/``total`` are set while analyzing."""
 
-    phase: str  # walking | analyzing | deriving
+    phase: str  # walking | analyzing | deriving | checking
     message: str
     library: str | None = None
     done: int | None = None
@@ -309,6 +310,9 @@ def run_scan(
                 if ids[lib.name] in scanned_ids:
                     resolve_library(conn, ids[lib.name], str(lib.path), lib.type, utcnow())
             link_titles(conn, config.linking)
+            if progress:
+                progress(ProgressEvent("checking", "checking for issues"))
+            compute_flags(conn, config)
         summary.status = "ok" if len(scanned_ids) == len(libs) else "failed"
     except (KeyboardInterrupt, ScanCancelled) as exc:
         summary.status = "interrupted"
@@ -350,4 +354,5 @@ def rederive(conn: sqlite3.Connection, config: Config) -> int:
         if lib.name in ids:
             resolve_library(conn, ids[lib.name], str(lib.path), lib.type, utcnow())
     link_titles(conn, config.linking)
+    compute_flags(conn, config)
     return count

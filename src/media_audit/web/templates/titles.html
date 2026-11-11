@@ -45,6 +45,7 @@
   {% for t in page.rows %}
     <tr>
       <td><a href="/titles/{{ t.id }}">{{ t.name }}</a>
+        {% if t.open_issues %}<a class="issue-mark" href="/titles/{{ t.id }}#issues" title="{{ t.open_issues }} issue{{ 's' if t.open_issues != 1 }} (errors or warnings)">⚠ {{ t.open_issues }}</a>{% endif %}
         {% if t.kind == "show" and t.seasons %}<span class="muted small">{{ t.seasons }} season{{ "s" if t.seasons != 1 }}</span>{% endif %}
         {% if t.version_count > 1 %}<span class="muted small">{{ t.version_count }} versions</span>{% endif %}
       </td>

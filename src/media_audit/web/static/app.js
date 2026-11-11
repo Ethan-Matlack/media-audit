@@ -166,6 +166,36 @@
     });
   }
 
+  // ------------------------------------------------------------ ignore / unignore
+  // Delegated, so it keeps working after the results area is swapped by a filter change.
+  document.addEventListener("submit", async (e) => {
+    const form = e.target.closest("form[data-ignore-form]");
+    if (!form) return;
+    e.preventDefault();
+    const btn = form.querySelector("button");
+    if (btn) btn.disabled = true;
+    const ignoring = form.action.includes("/issues/ignore?");
+    try {
+      const res = await fetch(form.action, { method: "POST", headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error(String(res.status));
+      const row = form.closest("[data-issue-row]");
+      const showingIgnored = new URLSearchParams(window.location.search).get("ignored") === "1";
+      if (row && ignoring && document.body.dataset.page === "issues" && !showingIgnored) {
+        row.hidden = true;
+      } else if (row) {
+        row.classList.toggle("ignored", ignoring);
+        form.action = ignoring
+          ? form.action.replace("/issues/ignore?", "/issues/unignore?")
+          : form.action.replace("/issues/unignore?", "/issues/ignore?");
+        if (btn) btn.textContent = ignoring ? "Unignore" : "Ignore";
+      }
+    } catch (_) {
+      form.submit(); // fall back to a normal post + redirect
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
   // ------------------------------------------------------------ line chart hover
   for (const fig of $$("[data-linechart]")) {
     const svg = $("svg", fig);
