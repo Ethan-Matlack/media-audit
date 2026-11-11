@@ -1,0 +1,90 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "Matroska",
+    "Format_Version": "4",
+    "Duration": "7200.000",
+    "OverallBitRate": "32000000",
+    "VideoCount": "1"
+   },
+   {
+    "@type": "Video",
+    "Format": "AVC",
+    "Format_Profile": "High",
+    "CodecID": "V_MPEG4/ISO/AVC",
+    "Width": "1920",
+    "Height": "1080",
+    "FrameRate": "23.976",
+    "BitDepth": "8",
+    "colour_primaries": "BT.709"
+   },
+   {
+    "@type": "Audio",
+    "Format": "DTS",
+    "Channels": "6",
+    "Language": "en",
+    "Default": "Yes",
+    "Forced": "No",
+    "Format_Commercial_IfAny": "DTS-HD Master Audio",
+    "Format_AdditionalFeatures": "XLL",
+    "ChannelLayout": "C L R Ls Rs LFE"
+   },
+   {
+    "@type": "Audio",
+    "Format": "AC-3",
+    "Channels": "2",
+    "Language": "en",
+    "Default": "No",
+    "Forced": "No",
+    "Title": "Commentary",
+    "ChannelLayout": "L R"
+   },
+   {
+    "@type": "Audio",
+    "Format": "DTS",
+    "Channels": "6",
+    "Language": "de",
+    "Default": "No",
+    "Forced": "No",
+    "Format_AdditionalFeatures": "",
+    "ChannelLayout": "C L R Ls Rs LFE"
+   },
+   {
+    "@type": "Text",
+    "Format": "PGS",
+    "Language": "en",
+    "Default": "Yes",
+    "Forced": "No"
+   },
+   {
+    "@type": "Text",
+    "Format": "PGS",
+    "Language": "ger",
+    "Default": "No",
+    "Forced": "No"
+   },
+   {
+    "@type": "Text",
+    "Format": "PGS",
+    "Language": "fr",
+    "Default": "No",
+    "Forced": "No"
+   },
+   {
+    "@type": "Text",
+    "Format": "PGS",
+    "Language": "",
+    "Default": "No",
+    "Forced": "No"
+   }
+  ]
+ }
+}

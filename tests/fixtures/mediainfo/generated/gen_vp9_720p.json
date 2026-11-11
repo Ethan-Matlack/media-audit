@@ -1,0 +1,83 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/CAPTURED.webm",
+  "track": [
+   {
+    "@type": "General",
+    "VideoCount": "1",
+    "AudioCount": "1",
+    "FileExtension": "webm",
+    "Format": "WebM",
+    "Format_Version": "4",
+    "FileSize": "358627",
+    "Duration": "1.008",
+    "OverallBitRate": "2846246",
+    "FrameRate": "24.000",
+    "FrameCount": "24",
+    "IsStreamable": "Yes",
+    "File_Modified_Date": "2026-11-09 01:51:19 UTC",
+    "File_Modified_Date_Local": "2026-11-08 20:51:19",
+    "Encoded_Application": "Lavf63.1.101",
+    "Encoded_Library": "Lavf63.1.101"
+   },
+   {
+    "@type": "Video",
+    "StreamOrder": "0",
+    "ID": "1",
+    "UniqueID": "316924416988202788",
+    "Format": "VP9",
+    "Format_Profile": "0",
+    "CodecID": "V_VP9",
+    "Duration": "1.000000000",
+    "Width": "1280",
+    "Height": "720",
+    "Sampled_Width": "1280",
+    "Sampled_Height": "720",
+    "PixelAspectRatio": "1.000",
+    "DisplayAspectRatio": "1.778",
+    "FrameRate_Mode": "CFR",
+    "FrameRate": "24.000",
+    "FrameCount": "24",
+    "ChromaSubsampling": "4:2:0",
+    "BitDepth": "8",
+    "Delay": "0.000",
+    "Delay_Source": "Container",
+    "Encoded_Library": "Lavc63.1.101 libvpx-vp9",
+    "Default": "No",
+    "Forced": "No",
+    "colour_description_present": "Yes",
+    "colour_description_present_Source": "Container",
+    "colour_range": "Limited",
+    "colour_range_Source": "Container / Stream",
+    "matrix_coefficients_Source": "Stream"
+   },
+   {
+    "@type": "Audio",
+    "StreamOrder": "1",
+    "ID": "2",
+    "UniqueID": "18239746212789275499",
+    "Format": "Opus",
+    "CodecID": "A_OPUS",
+    "Duration": "1.008000000",
+    "Channels": "1",
+    "ChannelPositions": "Front: C",
+    "ChannelLayout": "M",
+    "SamplingRate": "48000",
+    "SamplingCount": "48384",
+    "BitDepth": "16",
+    "Compression_Mode": "Lossy",
+    "Delay": "0.000",
+    "Delay_Source": "Container",
+    "Video_Delay": "0.000",
+    "Encoded_Library": "Lavc63.1.101 libopus",
+    "Default": "No",
+    "Forced": "No"
+   }
+  ]
+ }
+}

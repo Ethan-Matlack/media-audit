@@ -1,0 +1,39 @@
+# Config used by docker-compose.yml, matching the server's media layout.
+#
+# /media is $MEDIA_ROOT mounted read-only: the share's content/ directory on the server
+# (e.g. MEDIA_ROOT=/mnt/user/media/content on Unraid), or ./docker/media for the demo
+# library from scripts/make_demo_library.sh, which uses the same layout.
+# books/, music/, music-unsorted/ and photos/ are deliberately not scanned.
+database: /config/media-audit.db
+
+libraries:
+  - name: movies
+    path: /media/movies
+    type: movies
+  - name: movies-anime
+    path: /media/movies-anime
+    type: movies
+  - name: tv
+    path: /media/tv
+    type: tv
+  - name: anime
+    path: /media/anime
+    type: tv
+
+scan:
+  # Keep low on spinning disks; the server reads its own disks, but Unraid's array
+  # still serializes reads per disk.
+  workers: 2
+  # Headers only; ~1 MB and <3 s per file over SMB, including 75 GB remuxes.
+  parse_speed: 0
+  # Files whose TrueHD stream isn't described in the headers (so Atmos is unknown) are
+  # re-parsed at this speed, abandoned after retry_timeout seconds (0 disables).
+  retry_parse_speed: 0.05
+  retry_timeout: 60
+
+linking:
+  by_id: true
+  by_name_year: true
+
+languages:
+  preferred_audio: [en]

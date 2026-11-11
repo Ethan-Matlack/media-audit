@@ -1,0 +1,40 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "Matroska",
+    "Format_Version": "4",
+    "Duration": "7200.000",
+    "OverallBitRate": "40000000",
+    "VideoCount": "1"
+   },
+   {
+    "@type": "Video",
+    "Format": "VC-1",
+    "Format_Profile": "Advanced",
+    "CodecID": "V_MS/VFW/FOURCC / WVC1",
+    "Width": "1920",
+    "Height": "1080",
+    "FrameRate": "23.976",
+    "BitDepth": "8"
+   },
+   {
+    "@type": "Audio",
+    "Format": "DTS",
+    "Channels": "8",
+    "Language": "en",
+    "Default": "Yes",
+    "Forced": "No",
+    "Format_Profile": "X / MA / Core",
+    "ChannelLayout": "L R C LFE Ls Rs Lb Rb"
+   }
+  ]
+ }
+}

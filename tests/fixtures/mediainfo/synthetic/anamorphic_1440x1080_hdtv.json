@@ -1,0 +1,34 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "MPEG-TS",
+    "Duration": "1800.0"
+   },
+   {
+    "@type": "Video",
+    "Format": "AVC",
+    "Width": "1440",
+    "Height": "1080",
+    "FrameRate": "29.970",
+    "ScanType": "Interlaced"
+   },
+   {
+    "@type": "Audio",
+    "Format": "AC-3",
+    "Channels": "2",
+    "Language": "en",
+    "Default": "No",
+    "Forced": "No",
+    "ChannelLayout": "L R"
+   }
+  ]
+ }
+}

@@ -1,0 +1,26 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "Matroska",
+    "Duration": "300.0"
+   },
+   {
+    "@type": "Audio",
+    "Format": "FLAC",
+    "Channels": "2",
+    "Language": "en",
+    "Default": "No",
+    "Forced": "No",
+    "ChannelLayout": "L R"
+   }
+  ]
+ }
+}

@@ -1,0 +1,51 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "MPEG-4",
+    "Format_Profile": "Base Media",
+    "Duration": "2640.512",
+    "OverallBitRate": "5500000"
+   },
+   {
+    "@type": "Video",
+    "Format": "AVC",
+    "Format_Profile": "High",
+    "Format_Level": "4.1",
+    "CodecID": "avc1",
+    "Width": "1920",
+    "Height": "1080",
+    "FrameRate": "23.976",
+    "BitDepth": "8",
+    "ScanType": "Progressive",
+    "colour_primaries": "BT.709",
+    "transfer_characteristics": "BT.709"
+   },
+   {
+    "@type": "Audio",
+    "Format": "AAC",
+    "Channels": "2",
+    "Language": "en",
+    "Default": "Yes",
+    "Forced": "No",
+    "Format_AdditionalFeatures": "LC",
+    "ChannelLayout": "L R"
+   },
+   {
+    "@type": "Text",
+    "Format": "Timed Text",
+    "Language": "en",
+    "Default": "No",
+    "Forced": "No",
+    "CodecID": "tx3g"
+   }
+  ]
+ }
+}

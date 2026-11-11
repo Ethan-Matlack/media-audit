@@ -1,0 +1,38 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "AVI",
+    "Format_Profile": "OpenDML",
+    "Duration": "6012.4",
+    "OverallBitRate": "1150000"
+   },
+   {
+    "@type": "Video",
+    "Format": "MPEG-4 Visual",
+    "Format_Profile": "Advanced Simple@L5",
+    "CodecID": "XVID",
+    "Width": "720",
+    "Height": "304",
+    "FrameRate": "25.000",
+    "BitDepth": "8",
+    "ScanType": "Progressive"
+   },
+   {
+    "@type": "Audio",
+    "Format": "MPEG Audio",
+    "Format_Version": "1",
+    "Format_Profile": "Layer 3",
+    "Channels": "2",
+    "BitRate": "128000"
+   }
+  ]
+ }
+}

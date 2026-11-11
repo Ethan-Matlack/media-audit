@@ -1,0 +1,66 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "Matroska",
+    "Format_Version": "4",
+    "Duration": "7200.000",
+    "OverallBitRate": "80000000",
+    "VideoCount": "1"
+   },
+   {
+    "@type": "Video",
+    "StreamOrder": "0",
+    "ID": "1",
+    "Format": "HEVC",
+    "Format_Profile": "Main 10",
+    "Format_Level": "5.1",
+    "Format_Tier": "High",
+    "CodecID": "V_MPEGH/ISO/HEVC",
+    "Width": "3840",
+    "Height": "2160",
+    "FrameRate": "23.976",
+    "FrameRate_Mode": "CFR",
+    "BitDepth": "10",
+    "ColorSpace": "YUV",
+    "ChromaSubsampling": "4:2:0",
+    "ScanType": "Progressive",
+    "HDR_Format": "Dolby Vision / SMPTE ST 2086",
+    "HDR_Format_Version": "1.0 / ",
+    "HDR_Format_Profile": "dvhe.07 / ",
+    "HDR_Format_Level": "06 / ",
+    "HDR_Format_Settings": "BL+EL+RPU / ",
+    "HDR_Format_Compatibility": "Blu-ray / HDR10",
+    "colour_range": "Limited",
+    "colour_primaries": "BT.2020",
+    "transfer_characteristics": "PQ",
+    "matrix_coefficients": "BT.2020 non-constant"
+   },
+   {
+    "@type": "Audio",
+    "Format": "DTS",
+    "Channels": "8",
+    "Language": "en",
+    "Default": "Yes",
+    "Forced": "No",
+    "Format_Commercial_IfAny": "DTS-HD Master Audio",
+    "Format_AdditionalFeatures": "XLL X",
+    "ChannelLayout": "L R C LFE Ls Rs Lb Rb"
+   },
+   {
+    "@type": "Text",
+    "Format": "PGS",
+    "Language": "de",
+    "Default": "No",
+    "Forced": "No"
+   }
+  ]
+ }
+}

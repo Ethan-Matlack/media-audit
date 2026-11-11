@@ -1,0 +1,45 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "MPEG-PS",
+    "Duration": "5400.0",
+    "OverallBitRate": "6000000"
+   },
+   {
+    "@type": "Video",
+    "Format": "MPEG Video",
+    "Format_Version": "2",
+    "Format_Profile": "Main@Main",
+    "Width": "720",
+    "Height": "480",
+    "FrameRate": "29.970",
+    "BitDepth": "8",
+    "ScanType": "Interlaced"
+   },
+   {
+    "@type": "Audio",
+    "Format": "AC-3",
+    "Channels": "6",
+    "Language": "",
+    "Default": "No",
+    "Forced": "No",
+    "ChannelLayout": "L R C LFE Ls Rs"
+   },
+   {
+    "@type": "Text",
+    "Format": "RLE",
+    "Language": "en",
+    "Default": "No",
+    "Forced": "No"
+   }
+  ]
+ }
+}

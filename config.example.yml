@@ -1,0 +1,51 @@
+# media-audit configuration. Copy to config.yml (or /config/config.yml in Docker).
+# Any key can be overridden with an environment variable: MEDIA_AUDIT_<KEY>, using
+# "__" for nesting, e.g. MEDIA_AUDIT_SCAN__WORKERS=4. Relative paths are relative to
+# this file.
+
+# SQLite database. Keep it on local disk, not on the network share with the media.
+database: /config/media-audit.db
+
+libraries:
+  # type: movies -> <root>/<Movie (Year)>/<files>
+  # type: tv     -> <root>/<Show (Year)>/<Season NN>/<episodes>
+  - name: movies
+    path: /media/movies
+    type: movies
+  - name: movies-4k
+    path: /media/movies-4k
+    type: movies
+  - name: tv
+    path: /media/tv
+    type: tv
+
+scan:
+  # Parallel MediaInfo readers. Keep low (1-4) for spinning disks and NFS/SMB mounts.
+  workers: 2
+  # MediaInfo ParseSpeed (0-1). 0 reads headers only (~1 MB, <3 s per file) and still
+  # detects DV, HDR10+, Atmos and DTS:X. MediaInfo's own default of 0.5 can take minutes
+  # per remux over NFS/SMB.
+  parse_speed: 0
+  # Files whose TrueHD stream isn't described in the MKV headers (so Atmos is unknown)
+  # are re-parsed at this speed in a child process killed after retry_timeout seconds.
+  # If that fails, the track title is used as an "Atmos?" hint. 0 disables the retry.
+  retry_parse_speed: 0.05
+  retry_timeout: 60
+  follow_symlinks: false
+  # Glob patterns matched against file/folder *names*. Setting this replaces the
+  # defaults (NAS metadata dirs like @eaDir/#recycle, .DS_Store, *.part, ...).
+  # ignore: ["@eaDir", "#recycle", ".*"]
+
+# Link the same movie/show across libraries (e.g. movies + movies-4k).
+linking:
+  by_id: true          # same {tmdb-..}/{imdb-..}/{tvdb-..}
+  by_name_year: true   # same normalized title + year
+
+languages:
+  preferred_audio: [en]
+  preferred_subtitles: []
+
+# Reserved for later phases (flags, naming rules, Radarr/Sonarr integrations).
+flags: {}
+naming: {}
+integrations: {}

@@ -1,0 +1,50 @@
+# Local development / testing.
+#
+#   ./scripts/make_demo_library.sh            # tiny fake library in ./docker/media
+#   docker compose build
+#   docker compose run --rm media-audit check-config
+#   docker compose run --rm media-audit scan
+#   docker compose run --rm media-audit stats
+#   docker compose --profile explore up datasette   # browse the DB at http://localhost:8001
+#   docker compose --profile test run --rm test     # lint + types + tests incl. real MediaInfo
+#
+# To point at a real library instead, set MEDIA_ROOT (in .env or the environment) to the
+# share's content/ directory (movies/, movies-anime/, tv/, anime/), e.g. on Unraid
+# MEDIA_ROOT=/mnt/user/media/content. Libraries are listed in docker/config/config.yml.
+# It is always mounted read-only.
+
+services:
+  media-audit:
+    build:
+      context: .
+      target: runtime
+    image: media-audit:dev
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      TZ: "${TZ:-UTC}"
+      # Any config key can be overridden here, e.g.:
+      # MEDIA_AUDIT_SCAN__WORKERS: "2"
+    volumes:
+      - ./docker/config:/config
+      - ${MEDIA_ROOT:-./docker/media}:/media:ro
+    # Phase 3 replaces this with a long-running `serve` command and a port.
+    command: ["scan"]
+
+  # Interim DB browser (HANDOFF §10). Dev only; not part of the runtime image.
+  datasette:
+    profiles: ["explore"]
+    image: datasetteproject/datasette:0.65.1
+    user: "${PUID:-1000}:${PGID:-1000}"
+    command: ["datasette", "serve", "/config/media-audit.db", "-h", "0.0.0.0", "-p", "8001",
+              "--setting", "max_returned_rows", "5000", "--setting", "sql_time_limit_ms", "5000"]
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./docker/config:/config
+
+  test:
+    profiles: ["test"]
+    build:
+      context: .
+      target: test
+    image: media-audit:test

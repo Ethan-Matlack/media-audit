@@ -1,0 +1,86 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "Matroska",
+    "Format_Version": "4",
+    "Duration": "7200.000",
+    "OverallBitRate": "40000000",
+    "VideoCount": "1"
+   },
+   {
+    "@type": "Video",
+    "StreamOrder": "0",
+    "ID": "1",
+    "Format": "HEVC",
+    "Format_Profile": "Main 10",
+    "Format_Level": "5.1",
+    "Format_Tier": "High",
+    "CodecID": "V_MPEGH/ISO/HEVC",
+    "Width": "3840",
+    "Height": "1600",
+    "FrameRate": "23.976",
+    "FrameRate_Mode": "CFR",
+    "BitDepth": "10",
+    "ColorSpace": "YUV",
+    "ChromaSubsampling": "4:2:0",
+    "ScanType": "Progressive",
+    "HDR_Format": "SMPTE ST 2086",
+    "HDR_Format_Compatibility": "HDR10",
+    "MasteringDisplay_ColorPrimaries": "Display P3",
+    "MaxCLL": "1000 cd/m2",
+    "colour_range": "Limited",
+    "colour_primaries": "BT.2020",
+    "transfer_characteristics": "PQ",
+    "matrix_coefficients": "BT.2020 non-constant"
+   },
+   {
+    "@type": "Audio",
+    "Format": "MLP FBA",
+    "Channels": "8",
+    "Language": "en",
+    "Default": "Yes",
+    "Forced": "No",
+    "Format_Commercial_IfAny": "Dolby TrueHD with Dolby Atmos",
+    "Format_AdditionalFeatures": "16-ch",
+    "ChannelLayout": "L R C LFE Ls Rs Lb Rb",
+    "Title": "TrueHD Atmos 7.1"
+   },
+   {
+    "@type": "Audio",
+    "Format": "AC-3",
+    "Channels": "6",
+    "Language": "en",
+    "Default": "No",
+    "Forced": "No",
+    "Format_Commercial_IfAny": "Dolby Digital",
+    "ChannelLayout": "L R C LFE Ls Rs",
+    "BitRate": "640000"
+   },
+   {
+    "@type": "Text",
+    "Format": "PGS",
+    "Language": "en",
+    "Default": "No",
+    "Forced": "No",
+    "CodecID": "S_HDMV/PGS"
+   },
+   {
+    "@type": "Text",
+    "Format": "PGS",
+    "Language": "en",
+    "Default": "No",
+    "Forced": "Yes",
+    "CodecID": "S_HDMV/PGS",
+    "Title": "Forced"
+   }
+  ]
+ }
+}

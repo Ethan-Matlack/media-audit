@@ -1,0 +1,51 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "Matroska",
+    "Format_Version": "4",
+    "Duration": "7200.000",
+    "OverallBitRate": "40000000",
+    "VideoCount": "1"
+   },
+   {
+    "@type": "Video",
+    "StreamOrder": "0",
+    "ID": "1",
+    "Format": "HEVC",
+    "Format_Profile": "Main 10",
+    "Format_Level": "5.1",
+    "Format_Tier": "High",
+    "CodecID": "V_MPEGH/ISO/HEVC",
+    "Width": "3840",
+    "Height": "2160",
+    "FrameRate": "23.976",
+    "FrameRate_Mode": "CFR",
+    "BitDepth": "10",
+    "ColorSpace": "YUV",
+    "ChromaSubsampling": "4:2:0",
+    "ScanType": "Progressive",
+    "colour_primaries": "BT.2020",
+    "transfer_characteristics": "HLG",
+    "matrix_coefficients": "BT.2020 non-constant"
+   },
+   {
+    "@type": "Audio",
+    "Format": "AAC",
+    "Channels": "2",
+    "Language": "en",
+    "Default": "Yes",
+    "Forced": "No",
+    "Format_AdditionalFeatures": "LC",
+    "ChannelLayout": "L R"
+   }
+  ]
+ }
+}

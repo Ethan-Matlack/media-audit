@@ -1,0 +1,57 @@
+{
+ "creatingLibrary": {
+  "name": "MediaInfoLib",
+  "version": "24.12",
+  "url": "https://mediaarea.net/MediaInfo"
+ },
+ "media": {
+  "@ref": "/media/SYNTHETIC",
+  "track": [
+   {
+    "@type": "General",
+    "Format": "MPEG-4",
+    "Format_Version": "4",
+    "Duration": "7200.000",
+    "OverallBitRate": "40000000",
+    "VideoCount": "1",
+    "Format_Profile": "Base Media"
+   },
+   {
+    "@type": "Video",
+    "StreamOrder": "0",
+    "ID": "1",
+    "Format": "HEVC",
+    "Format_Profile": "Main 10",
+    "Format_Level": "5.1",
+    "Format_Tier": "High",
+    "CodecID": "dvh1",
+    "Width": "3840",
+    "Height": "2160",
+    "FrameRate": "23.976",
+    "FrameRate_Mode": "CFR",
+    "BitDepth": "10",
+    "ColorSpace": "YUV",
+    "ChromaSubsampling": "4:2:0",
+    "ScanType": "Progressive",
+    "HDR_Format": "Dolby Vision",
+    "HDR_Format_Version": "1.0",
+    "HDR_Format_Profile": "dvhe.05",
+    "HDR_Format_Level": "06",
+    "HDR_Format_Settings": "BL+RPU",
+    "colour_primaries": "BT.2020",
+    "transfer_characteristics": "PQ"
+   },
+   {
+    "@type": "Audio",
+    "Format": "E-AC-3",
+    "Channels": "6",
+    "Language": "en",
+    "Default": "Yes",
+    "Forced": "No",
+    "Format_Commercial_IfAny": "Dolby Digital Plus with Dolby Atmos",
+    "Format_AdditionalFeatures": "JOC",
+    "ChannelLayout": "L R C LFE Ls Rs"
+   }
+  ]
+ }
+}
