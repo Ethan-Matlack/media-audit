@@ -279,6 +279,35 @@ def test_linking_options(setup: tuple[Path, Path, Path, Config]) -> None:
     )
 
 
+def test_name_year_never_joins_conflicting_ids(tmp_path: Path) -> None:
+    from media_audit.config import LinkingConfig
+    from media_audit.titles import link_titles
+
+    conn = connect(tmp_path / "x.db")
+    conn.execute(
+        "INSERT INTO libraries (id, name, path, type, created_at) "
+        "VALUES (1, 'movies', '/m', 'movies', 'now'), (2, 'm4k', '/k', 'movies', 'now')"
+    )
+    rows = [  # (id, library, name, tmdb_id)
+        (1, 1, "Lincoln", "72331"),   # really Abraham Lincoln Vampire Hunter, misfiled
+        (2, 1, "Lincoln", "72976"),
+        (3, 2, "Lincoln", None),      # no ID: can join either; joins the first it meets
+        (4, 2, "Lincoln", "72976"),
+        (5, 1, "Heat", None),
+        (6, 2, "Heat", None),
+    ]  # fmt: skip
+    conn.executemany(
+        "INSERT INTO titles (id, library_id, kind, name, year, tmdb_id, folder_path, updated_at) "
+        "VALUES (?, ?, 'movie', ?, 2012, ?, 'f' || ?, 'now')",
+        [(*r, r[0]) for r in rows],
+    )
+    link_titles(conn, LinkingConfig())
+    key = {r["id"]: r["group_key"] for r in conn.execute("SELECT id, group_key FROM titles")}
+    assert key[2] == key[4] == "movie:tmdb:72976"
+    assert key[1] != key[2]
+    assert key[5] == key[6] is not None and key[5].startswith("movie:name:")
+
+
 def test_cli_end_to_end(setup: tuple[Path, Path, Path, Config], tmp_path: Path,
                         capsys: pytest.CaptureFixture[str]) -> None:  # fmt: skip
     from media_audit.cli import main

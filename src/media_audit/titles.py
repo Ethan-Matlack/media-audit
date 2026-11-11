@@ -405,10 +405,9 @@ def link_titles(conn: sqlite3.Connection, linking: LinkingConfig) -> None:
             return
         keep, drop = min(ra, rb), max(ra, rb)
         parent[drop] = keep
+        dropped = group_ids.pop(drop)
         for col in id_cols:
-            group_ids[keep][col] |= group_ids.pop(drop)[col] if col == id_cols[-1] else (
-                group_ids[drop][col]
-            )
+            group_ids[keep][col] |= dropped[col]
 
     keys_by_title: dict[int, list[str]] = defaultdict(list)
     for r in rows:
