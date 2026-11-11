@@ -1,7 +1,6 @@
 # media-audit
 
 > Working name. Status: **Phase 0 + 1** (scanner, analyzer, rules, titles; CLI only).
-> See [HANDOFF.md](HANDOFF.md) for the full brief and roadmap.
 
 A self-hosted tool that scans a media library on disk and reports what's actually in
 it: storage per movie/show/season and technical details for every file (container,

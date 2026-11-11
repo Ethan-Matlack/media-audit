@@ -20,6 +20,7 @@ import re
 import sqlite3
 import unicodedata
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
@@ -377,10 +378,17 @@ def link_titles(conn: sqlite3.Connection, linking: LinkingConfig) -> None:
     Titles are joined if they share any embedded ID (when ``by_id``) or the same
     normalized name + year (when ``by_name_year``). Linking is transitive, so a title
     with only an ID and one with only a matching name/year still join through a third.
+    A name/year match never joins groups whose IDs disagree (e.g. two different films
+    both called "Lincoln (2012)"); ID links are applied first so that check sees them.
     Titles linked to nothing keep ``group_key = NULL``.
     """
-    rows = conn.execute("SELECT id, kind, name, year, tmdb_id, imdb_id, tvdb_id FROM titles")
+    rows = conn.execute(
+        "SELECT id, kind, name, year, tmdb_id, imdb_id, tvdb_id FROM titles"
+    ).fetchall()
+    id_cols = ("tmdb_id", "imdb_id", "tvdb_id")
     parent: dict[int, int] = {}
+    # For each group root: the IDs its members carry, per ID type.
+    group_ids: dict[int, dict[str, set[str]]] = {}
 
     def find(x: int) -> int:
         while parent[x] != x:
@@ -388,29 +396,48 @@ def link_titles(conn: sqlite3.Connection, linking: LinkingConfig) -> None:
             x = parent[x]
         return x
 
-    def union(a: int, b: int) -> None:
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[max(ra, rb)] = min(ra, rb)
+    def conflicts(a: dict[str, set[str]], b: dict[str, set[str]]) -> bool:
+        return any(a[col] and b[col] and not (a[col] & b[col]) for col in id_cols)
 
-    keys_by_title: dict[int, list[str]] = {}
-    owner: dict[str, int] = {}
+    def union(a: int, b: int, *, check_ids: bool) -> None:
+        ra, rb = find(a), find(b)
+        if ra == rb or (check_ids and conflicts(group_ids[ra], group_ids[rb])):
+            return
+        keep, drop = min(ra, rb), max(ra, rb)
+        parent[drop] = keep
+        for col in id_cols:
+            group_ids[keep][col] |= group_ids.pop(drop)[col] if col == id_cols[-1] else (
+                group_ids[drop][col]
+            )
+
+    keys_by_title: dict[int, list[str]] = defaultdict(list)
     for r in rows:
-        tid = r["id"]
-        parent[tid] = tid
-        keys = []
-        if linking.by_id:
-            for col in ("tmdb_id", "imdb_id", "tvdb_id"):
-                if r[col]:
-                    keys.append(f"{r['kind']}:{col[:4]}:{r[col]}")
-        if linking.by_name_year and r["year"] and r["name"]:
-            keys.append(f"{r['kind']}:name:{normalize_name(r['name'])}|{r['year']}")
-        keys_by_title[tid] = keys
-        for k in keys:
-            if k in owner:
-                union(owner[k], tid)
-            else:
-                owner[k] = tid
+        parent[r["id"]] = r["id"]
+        group_ids[r["id"]] = {
+            col: ({r[col]} if linking.by_id and r[col] else set()) for col in id_cols
+        }
+
+    def link(key_of: Callable[[sqlite3.Row], list[str]], *, check_ids: bool) -> None:
+        owner: dict[str, int] = {}
+        for r in rows:
+            for k in key_of(r):
+                keys_by_title[r["id"]].append(k)
+                if k in owner:
+                    union(owner[k], r["id"], check_ids=check_ids)
+                else:
+                    owner[k] = r["id"]
+
+    if linking.by_id:
+        link(lambda r: [f"{r['kind']}:{c[:4]}:{r[c]}" for c in id_cols if r[c]], check_ids=False)
+    if linking.by_name_year:
+        link(
+            lambda r: (
+                [f"{r['kind']}:name:{normalize_name(r['name'])}|{r['year']}"]
+                if r["year"] and r["name"]
+                else []
+            ),
+            check_ids=True,
+        )
 
     members: dict[int, list[int]] = defaultdict(list)
     for tid in parent:
