@@ -32,9 +32,10 @@ The image is published to GitHub Container Registry as
    Nothing is scanned this time. Open the container log to see what it found, and edit
    `config.yml` if a type is wrong.
 4. **Each further start runs one scan and stops.** Press **Start** to scan, and follow
-   progress with the container's log icon. The first scan of a large library takes a few
-   hours. Later scans only read new or changed files, so they finish in seconds to
-   minutes. Stopping a scan midway is safe: the next start continues where it left off.
+   progress with the container's log icon. The first scan reads every file, so it takes a
+   while (about an hour for ~19,000 files; see [Scan times](#scan-times)). Later scans
+   only read new or changed files, so they finish in seconds to minutes. Stopping a scan
+   midway is safe: the next start continues where it left off.
 5. **See the results** from the Unraid terminal:
    ```sh
    docker run --rm -e PUID=99 -e PGID=100 -v /mnt/user/appdata/media-audit:/config \
@@ -114,6 +115,23 @@ uv run media-audit stats
   scan refuses to mark everything deleted unless you pass `--allow-empty`.
 - Raw MediaInfo JSON is stored per file, so improving a rule only needs `rederive`.
   Bumping `RULES_VERSION` makes the next scan re-derive automatically.
+
+### Scan times
+
+For reference, a first full scan of a mixed movie and TV library of **19,244 files**
+took **55 minutes** in the Docker container on an Unraid server, with the default
+settings (2 workers). That works out to about
+350 files a minute, or roughly 0.17 seconds per file.
+
+- **What it depends on:** analysis only reads file headers (`parse_speed: 0`), so time
+  depends mostly on how many files you have and how fast your disks respond, not on how
+  big the files are. Files with incomplete TrueHD headers get a deeper re-read, capped
+  at `retry_timeout` (60 s) each, so those cost more.
+- **Workers:** `scan.workers` (default 2) sets how many files are analyzed at once. More
+  workers can help on SSDs or several array disks, but can slow down a single spinning
+  disk.
+- **Rescans:** unchanged files aren't reopened, so a rescan costs one directory walk
+  plus the new or changed files.
 
 ## Configuration
 
