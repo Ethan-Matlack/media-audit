@@ -16,10 +16,16 @@ classifiers = [
 #   pymediainfo  MIT   (wraps libmediainfo, BSD-2-Clause, installed separately)
 #   PyYAML       MIT
 #   pydantic     MIT
+#   starlette    BSD-3-Clause  (web UI; pulls in anyio, MIT)
+#   uvicorn      BSD-3-Clause  (pulls in h11 MIT, click BSD-3-Clause)
+#   Jinja2       BSD-3-Clause  (pulls in MarkupSafe BSD-3-Clause)
 dependencies = [
     "pymediainfo>=6.1,<8",
     "PyYAML>=6.0,<7",
     "pydantic>=2.9,<3",
+    "starlette>=0.40,<1",
+    "uvicorn>=0.30,<1",
+    "Jinja2>=3.1,<4",
 ]
 
 [project.scripts]
@@ -31,6 +37,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "types-PyYAML>=6.0",
+    "httpx>=0.27",  # starlette's TestClient
 ]
 
 [build-system]
@@ -43,6 +50,10 @@ packages = ["src/media_audit"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+filterwarnings = [
+    # starlette's TestClient on newer anyio; not our code.
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
 markers = [
     "mediainfo: needs libmediainfo installed (skipped otherwise)",
     "ffmpeg: needs ffmpeg to generate test media (skipped otherwise)",

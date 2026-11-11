@@ -1,0 +1,63 @@
+{# Horizontal bar list: one series, value printed beside each bar (no colour-only meaning). #}
+{% macro bars(rows, total, measure="files", link=None, limit=None) %}
+{% set shown = rows[:limit] if limit else rows %}
+{% set top = (shown | map(attribute=measure) | max) if shown else 0 %}
+<ol class="bars">
+  {% for r in shown %}
+  {% set v = r[measure] or 0 %}
+  {% set pct = (100 * r.files / total) if total else 0 %}
+  <li title="{{ r.value }}: {{ r.files | num }} files{% if r.bytes is defined %} · {{ r.bytes | bytes }}{% endif %} ({{ '%.1f' % pct }}%)">
+    <span class="bar-label">
+      {% set fv = "(none)" if r.value in ("?", "(none)") else r.value %}
+      {% if link %}<a href="{{ link }}{{ fv | urlencode }}">{{ r.value if r.value != "?" else "(unknown)" }}</a>{% else %}{{ r.value }}{% endif %}
+    </span>
+    <span class="bar-track"><span class="bar" style="width: {{ (100 * v / top) if top else 0 }}%"></span></span>
+    <span class="bar-value">
+      {% if measure == "bytes" %}{{ v | bytes }}{% else %}{{ v | num }}{% endif %}
+      <span class="muted">{{ '%.0f' % pct if pct >= 1 else ('<1' if pct > 0 else '0') }}%</span>
+    </span>
+  </li>
+  {% endfor %}
+</ol>
+{% if limit and rows | length > limit %}<p class="muted small">+ {{ rows | length - limit }} more</p>{% endif %}
+{% endmacro %}
+
+{% macro sort_th(label, key, params, default_dir="desc", cls="") %}
+{% set active = params.get("sort") == key %}
+{% set cur = params.get("dir", default_dir) %}
+{% set next_dir = ("asc" if cur == "desc" else "desc") if active else default_dir %}
+<th class="{{ cls }}" {% if active %}aria-sort="{{ 'ascending' if cur == 'asc' else 'descending' }}"{% endif %}>
+  <a href="{{ qs(params, sort=key, dir=next_dir, page=None) }}">{{ label }}{% if active %} <span aria-hidden="true">{{ "↑" if cur == "asc" else "↓" }}</span>{% endif %}</a>
+</th>
+{% endmacro %}
+
+{% macro pager(page, params) %}
+{% if page.pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% if page.page > 1 %}<a href="{{ qs(params, page=page.page - 1) }}" rel="prev">← Prev</a>{% else %}<span class="muted">← Prev</span>{% endif %}
+  <span>Page {{ page.page }} of {{ page.pages | num }}</span>
+  {% if page.page < page.pages %}<a href="{{ qs(params, page=page.page + 1) }}" rel="next">Next →</a>{% else %}<span class="muted">Next →</span>{% endif %}
+</nav>
+{% endif %}
+{% endmacro %}
+
+{% macro title_badges(t) %}
+{% if t.has_4k %}<span class="badge">4K</span>{% endif %}
+{% if t.has_dv %}<span class="badge">DV</span>{% elif t.has_hdr %}<span class="badge">HDR</span>{% endif %}
+{% if t.has_object_audio %}<span class="badge">Atmos/DTS:X</span>{% endif %}
+{% endmacro %}
+
+{% macro video_summary(f) %}
+{% if f.resolution_class %}{{ f.resolution_class }}{% endif %}
+{% if f.video_codec %} {{ f.video_codec }}{% if f.bit_depth %} {{ f.bit_depth }}-bit{% endif %}{% endif %}
+{% if f.dynamic_range and f.dynamic_range != "SDR" %} · {{ f.dynamic_range }}{% if f.dv_profile is not none %} P{{ f.dv_profile }}{% endif %}{% endif %}
+{% endmacro %}
+
+{% macro select(name, label, values, params, any_label="Any") %}
+<label>{{ label }}
+  <select name="{{ name }}">
+    <option value="">{{ any_label }}</option>
+    {% for v in values %}<option value="{{ v }}" {% if params.get(name) == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+  </select>
+</label>
+{% endmacro %}

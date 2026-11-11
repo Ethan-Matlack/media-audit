@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Scans · media-audit{% endblock %}
+{% block content %}
+{% set s = status.scan %}
+<div class="page-head">
+  <h1>Scans</h1>
+  <div class="actions">
+    <form method="post" action="/scans/run" class="inline" data-scan-form>
+      <button type="submit" class="button primary" id="scan-now" {% if s.running %}disabled{% endif %}>Scan now</button>
+    </form>
+    <form method="post" action="/scans/stop" class="inline" data-scan-form>
+      <button type="submit" class="button" id="scan-stop" {% if not s.running or s.stopping %}hidden{% endif %}>Stop</button>
+    </form>
+  </div>
+</div>
+
+<section class="card" id="scan-progress" aria-live="polite">
+  <div data-when="running" {% if not s.running %}hidden{% endif %}>
+    <h2>Scanning <span class="muted small" data-field="trigger">{{ s.trigger or "" }}</span></h2>
+    <p data-field="phase-text">{{ s.message or "starting" }}</p>
+    <div class="progress"><span class="progress-bar" data-field="bar"
+      style="width: {{ (100 * s.done / s.total) if s.total else 0 }}%"></span></div>
+    <p class="muted small"><span data-field="counts">{% if s.total %}{{ s.done | num }} of {{ s.total | num }} files analyzed{% endif %}</span>
+      · <span data-field="elapsed">{{ s.elapsed_s | duration if s.elapsed_s else "" }}</span> elapsed
+      <span data-field="stopping" {% if not s.stopping %}hidden{% endif %}> · stopping after the files being read now</span></p>
+  </div>
+  <div data-when="idle" {% if s.running %}hidden{% endif %}>
+    <h2>Idle</h2>
+    <p>
+      {% if status.schedule.expr %}
+        Scheduled scans: <code>{{ status.schedule.expr }}</code>{% if status.schedule.next_run %}, next at {{ status.schedule.next_run.replace("T", " ") }}{% endif %}.
+      {% elif status.schedule.error %}
+        <span class="error">Schedule error: {{ status.schedule.error }}</span>
+      {% else %}
+        Scheduled scans are off. Set <code>scan.schedule</code> in the config (e.g. <code>0 3 * * *</code>) to turn them on.
+      {% endif %}
+      Rescans only read new or changed files.
+    </p>
+    {% if s.last %}
+    <p class="small">Last scan in this session: <strong>{{ s.last.status }}</strong>
+      {% if s.last.elapsed_s %} in {{ s.last.elapsed_s | duration }}{% endif %}
+      {% if s.last.analyzed is defined %} · {{ s.last.new | num }} new, {{ s.last.changed | num }} changed, {{ s.last.moved | num }} moved, {{ s.last.deleted | num }} deleted, {{ s.last.analyzed | num }} analyzed{% endif %}
+    </p>
+    {% for e in s.last.errors %}<p class="error small">{{ e }}</p>{% endfor %}
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>History</h2>
+  {% if history %}
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>#</th><th>Started</th><th>Status</th><th class="num">Took</th><th class="num">Seen</th>
+      <th class="num">New</th><th class="num">Changed</th><th class="num">Moved</th><th class="num">Deleted</th>
+      <th class="num">Analyzed</th><th class="num">Errors</th></tr></thead>
+    <tbody>
+    {% for h in history %}
+      <tr>
+        <td>{{ h.id }}</td>
+        <td class="nowrap">{{ h.started_at | localtime }}</td>
+        <td><span class="status status-{{ h.status }}">{{ h.status }}</span></td>
+        <td class="num nowrap">{{ h.duration_s | duration if h.duration_s is not none else "–" }}</td>
+        <td class="num">{{ h.files_seen | num }}</td>
+        <td class="num">{{ h.files_new | num }}</td>
+        <td class="num">{{ h.files_changed | num }}</td>
+        <td class="num">{{ h.files_moved | num }}</td>
+        <td class="num">{{ h.files_deleted | num }}</td>
+        <td class="num">{{ h.files_analyzed | num }}</td>
+        <td class="num">{% if h.message %}<details class="inline-details"><summary>{{ h.errors | num }}</summary><pre class="small">{{ h.message }}</pre></details>{% else %}{{ h.errors | num }}{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No scans yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

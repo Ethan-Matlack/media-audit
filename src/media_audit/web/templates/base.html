@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}media-audit{% endblock %}</title>
+<link rel="stylesheet" href="/static/app.css?v={{ version }}">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<script src="/static/app.js?v={{ version }}" defer></script>
+</head>
+<body data-page="{{ nav }}">
+<header class="topbar">
+  <a class="brand" href="/">media-audit</a>
+  <nav>
+    <a href="/" {% if nav == "overview" %}aria-current="page"{% endif %}>Overview</a>
+    <a href="/titles" {% if nav in ("titles", "title") %}aria-current="page"{% endif %}>Titles</a>
+    <a href="/files" {% if nav == "files" %}aria-current="page"{% endif %}>Files</a>
+    <a href="/scans" {% if nav == "scans" %}aria-current="page"{% endif %}>Scans</a>
+  </nav>
+  <a class="status-pill" href="/scans" id="status-pill" data-running="{{ 'true' if status.scan.running else 'false' }}">
+    {% if status.scan.running %}
+      <span class="dot" aria-hidden="true"></span><span class="pill-text">Scanning…</span>
+    {% elif status.schedule.next_run %}
+      <span class="pill-text">Next scan {{ status.schedule.next_run.replace("T", " ") }}</span>
+    {% else %}
+      <span class="pill-text">No scan scheduled</span>
+    {% endif %}
+  </a>
+</header>
+
+<main>
+  {% if config_error %}
+  <div class="notice notice-error" role="alert">
+    <strong>Config problem</strong> in <code>{{ config_path }}</code>:
+    <pre class="small">{{ config_error }}</pre>
+    Fix the file (no restart needed). Until then the last valid config is used, if there was one.
+  </div>
+  {% endif %}
+  {% if first_start %}
+  <div class="notice">
+    <strong>A config was just created</strong> at <code>{{ config_path }}</code> from the folders under your media
+    folder. Check the library list and types (edit the file if needed; no restart required), then
+    <form method="post" action="/scans/run" class="inline"><button type="submit" class="link">scan now</button></form>.
+  </div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+<footer class="footer">media-audit {{ version }} · read-only: media files are never modified</footer>
+</body>
+</html>

@@ -49,6 +49,7 @@ def test_generated_config_matches_server_layout(tmp_path: Path) -> None:
     assert cfg.libraries[0].path == root / "anime"
     assert cfg.database == tmp_path / "config" / "media-audit.db"
     assert cfg.scan.parse_speed == 0 and cfg.scan.retry_timeout == 60
+    assert cfg.scan.schedule == "0 3 * * *" and cfg.web.port == 8484
     assert "#   path: " + str(root / "books") in text  # unrecognized: commented out
     assert ".hidden" not in text and "#recycle" not in text
     with pytest.raises(FileExistsError):

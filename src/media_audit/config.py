@@ -85,8 +85,33 @@ class ScanConfig(_Model):
     ignore: list[str] = Field(default_factory=lambda: list(DEFAULT_IGNORE))
     """Glob patterns matched against each file or directory *name* (not the full path)."""
 
-    schedule: str | None = None
-    """Cron expression for scheduled scans (used by the web service, Phase 3)."""
+    schedule: str | None = "0 3 * * *"
+    """Cron expression (container local time, i.e. ``TZ``) for scans run by ``serve``.
+    ``off``/``none``/empty disables scheduled scans; "Scan now" still works."""
+
+    @field_validator("schedule", mode="before")
+    @classmethod
+    def _schedule(cls, v: object) -> str | None:
+        # YAML reads `off`/`no`/`false` as booleans; all of them mean "disabled".
+        off = {"", "off", "none", "never", "disabled", "false"}
+        if v is None or v is False or (isinstance(v, str) and v.strip().lower() in off):
+            return None
+        if not isinstance(v, str):
+            raise ValueError("schedule must be a cron expression like '0 3 * * *' or 'off'")
+        from media_audit.cron import CronError, parse_cron
+
+        try:
+            parse_cron(v)
+        except CronError as exc:
+            raise ValueError(str(exc)) from exc
+        return v.strip()
+
+
+class WebConfig(_Model):
+    """The ``serve`` command's web UI."""
+
+    host: str = "0.0.0.0"  # all interfaces: a container service; publish the port to limit access
+    port: int = Field(default=8484, ge=1, le=65535)
 
 
 class LinkingConfig(_Model):
@@ -114,6 +139,7 @@ class Config(_Model):
     scan: ScanConfig = Field(default_factory=ScanConfig)
     linking: LinkingConfig = Field(default_factory=LinkingConfig)
     languages: LanguagesConfig = Field(default_factory=LanguagesConfig)
+    web: WebConfig = Field(default_factory=WebConfig)
 
     # Reserved for later phases; accepted now so configs written today keep working.
     flags: dict[str, Any] = Field(default_factory=dict)
@@ -149,13 +175,15 @@ def find_config_path(explicit: Path | None = None) -> Path | None:
 
 def _apply_env_overrides(data: dict[str, Any], environ: dict[str, str]) -> None:
     for key, raw in environ.items():
-        if not key.startswith(ENV_PREFIX) or key in NON_CONFIG_ENV:
+        # Empty values count as unset (e.g. a cleared field in the Unraid template), so the
+        # config file decides. Use "off"/"null" etc. to actually clear a setting.
+        if not key.startswith(ENV_PREFIX) or key in NON_CONFIG_ENV or raw == "":
             continue
         parts = [p.lower() for p in key[len(ENV_PREFIX) :].split("__") if p]
         if not parts:
             continue
         try:
-            value = yaml.safe_load(raw) if raw != "" else ""
+            value = yaml.safe_load(raw)
         except yaml.YAMLError:
             value = raw
         target = data

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 #
 # Targets:
-#   runtime (default)  docker build -t media-audit .
+#   runtime (default)  docker build -t media-audit .   (runs `serve`: web UI on :8484 + scheduled scans)
 #   test               docker build --target test -t media-audit:test . && docker run --rm media-audit:test
 #
 # libmediainfo comes bundled in pymediainfo's manylinux wheel (needs only zlib and
@@ -72,10 +72,16 @@ RUN python -c "from pymediainfo import MediaInfo; assert MediaInfo.can_parse(), 
 # The entrypoint starts as root, makes /config writable for PUID:PGID (Unraid creates
 # appdata folders owned by root), then drops to that user. With `--user` / compose
 # `user:` it runs as that user directly. On first start with no config.yml it writes
-# one from the folders under /media and exits so it can be reviewed.
+# one from the folders under /media; `serve` then waits for "Scan now" or the schedule.
 RUN mkdir -p /config
 VOLUME ["/config"]
 WORKDIR /config
+EXPOSE 8484
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('MEDIA_AUDIT_WEB__PORT', '8484'), timeout=4)"
+
+# On `docker stop` a running scan stops cleanly: files already being read are saved and
+# the next scan resumes from there.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["scan"]
+CMD ["serve"]

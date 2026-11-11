@@ -1,11 +1,10 @@
 # Local development / testing.
 #
 #   ./scripts/make_demo_library.sh            # tiny fake library in ./docker/media
-#   docker compose build
-#   docker compose run --rm media-audit check-config
-#   docker compose run --rm media-audit scan
-#   docker compose run --rm media-audit stats
-#   docker compose --profile explore up datasette   # browse the DB at http://localhost:8001
+#   docker compose up -d --build              # web UI: http://localhost:8484
+#   docker compose exec media-audit media-audit scan     # one-off scan from the CLI
+#   docker compose exec media-audit media-audit stats
+#   docker compose --profile explore up datasette   # raw SQL browser at http://localhost:8001
 #   docker compose --profile test run --rm test     # lint + types + tests incl. real MediaInfo
 #
 # To point at a real library instead, set MEDIA_ROOT (in .env or the environment) to the
@@ -20,17 +19,19 @@ services:
       target: runtime
     image: media-audit:dev
     user: "${PUID:-1000}:${PGID:-1000}"
+    restart: unless-stopped
     environment:
       TZ: "${TZ:-UTC}"
       # Any config key can be overridden here, e.g.:
       # MEDIA_AUDIT_SCAN__WORKERS: "2"
+      # MEDIA_AUDIT_SCAN__SCHEDULE: "0 3 * * *"   # or "off"
+    ports:
+      - "${WEB_PORT:-8484}:8484"
     volumes:
       - ./docker/config:/config
       - ${MEDIA_ROOT:-./docker/media}:/media:ro
-    # Phase 3 replaces this with a long-running `serve` command and a port.
-    command: ["scan"]
 
-  # Interim DB browser (HANDOFF §10). Dev only; not part of the runtime image.
+  # Raw SQL browser for ad-hoc queries. Dev only; not part of the runtime image.
   datasette:
     profiles: ["explore"]
     image: datasetteproject/datasette:0.65.1

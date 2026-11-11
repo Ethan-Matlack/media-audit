@@ -17,9 +17,9 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Ethan-Matlack/media-audit/issues</Support>
   <Project>https://github.com/Ethan-Matlack/media-audit</Project>
-  <Overview>Scans your media library (read-only) and reports what's actually in it: size per movie/show/season, and container, codecs, resolution, HDR10/HDR10+/Dolby Vision, Atmos/DTS:X, audio and subtitle languages and release group for every file.[br][br]Each start runs one scan and the container then stops; press Start (or schedule "docker start media-audit" with User Scripts) to rescan. Rescans only re-read new or changed files.[br][br]On the very first start it writes /config/config.yml from the folders it finds under /media and stops without scanning, so you can review the library list first.</Overview>
+  <Overview>Scans your media library (read-only) and reports what's actually in it: size per movie/show/season, and container, codecs, resolution, HDR10/HDR10+/Dolby Vision, Atmos/DTS:X, audio and subtitle languages and release group for every file. Browse it all in the web UI.[br][br]The container keeps running: it serves the web UI and rescans on a schedule (03:00 daily by default), and the Scans page has a Scan now button. Rescans only re-read new or changed files.[br][br]On the very first start it writes /config/config.yml from the folders it finds under /media and does not scan until you press Scan now, so you can review the library list first. The web UI has no login; keep it on your LAN.</Overview>
   <Category>MediaApp:Video Tools:</Category>
-  <WebUI/>
+  <WebUI>http://[IP]:[PORT:8484]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Ethan-Matlack/media-audit/main/unraid/media-audit.xml</TemplateURL>
   <Icon/>
   <ExtraParams/>
@@ -29,10 +29,11 @@
   <DonateText/>
   <DonateLink/>
   <Requires/>
+  <Config Name="Web UI port" Target="8484" Default="8484" Mode="tcp" Description="Port for the web UI." Type="Port" Display="always" Required="true" Mask="false">8484</Config>
   <Config Name="Config" Target="/config" Default="/mnt/user/appdata/media-audit" Mode="rw" Description="Config file and SQLite database. Keep this on the cache/appdata share, not on the media array." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/media-audit</Config>
   <Config Name="Media" Target="/media" Default="/mnt/user/media" Mode="ro" Description="Folder containing your libraries (e.g. movies/, tv/). Mounted read-only; media-audit never modifies files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the scanner runs as (99 = nobody)." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID the scanner runs as (100 = users)." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
-  <Config Name="TZ" Target="TZ" Default="UTC" Mode="" Description="Time zone, e.g. America/New_York." Type="Variable" Display="advanced" Required="false" Mask="false">UTC</Config>
+  <Config Name="Scan schedule" Target="MEDIA_AUDIT_SCAN__SCHEDULE" Default="" Mode="" Description="Optional. When to rescan, as a cron expression in the TZ time zone (0 3 * * * = 03:00 daily, 0 */6 * * * = every 6 hours), or off. Empty uses scan.schedule from config.yml (03:00 daily by default)." Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Scan workers" Target="MEDIA_AUDIT_SCAN__WORKERS" Default="2" Mode="" Description="Files analyzed in parallel. Keep low (1-4) for array disks." Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
 </Container>

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 import time
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
@@ -25,11 +26,28 @@ from media_audit.titles import link_titles, resolve_library
 
 log = logging.getLogger(__name__)
 
-ProgressFn = Callable[[str], None]
+
+@dataclass(frozen=True)
+class ProgressEvent:
+    """Where a running scan is. ``done``/``total`` are set while analyzing."""
+
+    phase: str  # walking | analyzing | deriving
+    message: str
+    library: str | None = None
+    done: int | None = None
+    total: int | None = None
+    path: str | None = None
+
+
+ProgressFn = Callable[[ProgressEvent], None]
 
 
 class ScanLocked(Exception):
     pass
+
+
+class ScanCancelled(Exception):
+    """The scan was asked to stop (e.g. the container is shutting down)."""
 
 
 @dataclass
@@ -111,8 +129,13 @@ def analyze_pending(
     workers: int,
     progress: ProgressFn | None = None,
     retry_errors: bool = False,
+    cancel: threading.Event | None = None,
 ) -> tuple[int, list[str]]:
-    """Run the analyzer on every live video file that hasn't been analyzed yet."""
+    """Run the analyzer on every live video file that hasn't been analyzed yet.
+
+    When ``cancel`` is set, no new files are started; finished results are still saved
+    and :class:`ScanCancelled` is raised. The next scan picks up the rest.
+    """
     sql = (
         "SELECT id, path, size_bytes, mtime_ns FROM files WHERE deleted_at IS NULL "
         f"AND is_video = 1 AND library_id IN ({','.join('?' * len(library_ids))}) AND "
@@ -143,11 +166,15 @@ def analyze_pending(
         pending_writes.clear()
         last_commit = time.monotonic()
 
+    if progress:
+        progress(ProgressEvent("analyzing", f"analyzing {total} files", done=0, total=total))
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="analyze") as pool:
         it = iter(rows)
         in_flight: dict[Future[dict[str, Any]], sqlite3.Row] = {}
 
         def submit_next() -> None:
+            if cancel is not None and cancel.is_set():
+                return
             row = next(it, None)
             if row is not None:
                 in_flight[pool.submit(run, row["path"])] = row
@@ -179,10 +206,13 @@ def analyze_pending(
                     errors.append(f"{row['path']}: {err}")
                 pending_writes.append((row["id"], raw, err))
                 if progress:
-                    progress(f"analyzed {done}/{total}: {row['path']}")
+                    progress(ProgressEvent("analyzing", f"analyzed {done}/{total}: {row['path']}",
+                                           done=done, total=total, path=row["path"]))  # fmt: skip
             if len(pending_writes) >= 25 or time.monotonic() - last_commit > 10:
                 flush()
     flush()
+    if cancel is not None and cancel.is_set():
+        raise ScanCancelled(f"stopped after analyzing {done} of {total} files")
     return done, errors
 
 
@@ -195,7 +225,9 @@ def run_scan(
     allow_empty: bool = False,
     retry_errors: bool = False,
     progress: ProgressFn | None = None,
+    cancel: threading.Event | None = None,
 ) -> ScanSummary:
+    """Run one scan. Call it while holding :func:`scan_lock`."""
     started = time.monotonic()
     now = utcnow()
     ids = sync_libraries(conn, config, now)
@@ -214,6 +246,15 @@ def run_scan(
     if ensure_rules_version(conn):
         log.info("derivation rules changed; re-deriving stored data")
 
+    # We hold the scan lock, so any scan still marked running died without finishing
+    # (container killed, power loss). Its work so far is kept; record how it ended.
+    with transaction(conn):
+        conn.execute(
+            "UPDATE scans SET status = 'interrupted', finished_at = coalesce(finished_at, ?), "
+            "message = 'did not finish (process stopped)' || coalesce(char(10) || message, '') "
+            "WHERE status = 'running'",
+            (now,),
+        )
     cur = conn.execute(
         "INSERT INTO scans (started_at, libraries) VALUES (?, ?)",
         (now, ",".join(lib.name for lib in libs)),
@@ -222,8 +263,11 @@ def run_scan(
     scanned_ids: list[int] = []
     try:
         for lib in libs:
+            if cancel is not None and cancel.is_set():
+                raise ScanCancelled("stopped while walking libraries")
             if progress:
-                progress(f"walking {lib.name}: {lib.path}")
+                progress(ProgressEvent("walking", f"walking {lib.name}: {lib.path}",
+                                       library=lib.name))  # fmt: skip
             try:
                 s = sync_library(
                     conn, ids[lib.name], lib.path, ignore=config.scan.ignore,
@@ -244,22 +288,24 @@ def run_scan(
         if scanned_ids and analyzer is not None:
             analyzed, errs = analyze_pending(
                 conn, analyzer, library_ids=scanned_ids, workers=config.scan.workers,
-                progress=progress, retry_errors=retry_errors,
+                progress=progress, retry_errors=retry_errors, cancel=cancel,
             )  # fmt: skip
             summary.analyzed = analyzed
             summary.errors.extend(errs)
 
         if scanned_ids:
             if progress:
-                progress("deriving")
+                progress(ProgressEvent("deriving", "deriving fields and rebuilding titles"))
             derive_pending(conn, utcnow(), scanned_ids)
             for lib in libs:
                 if ids[lib.name] in scanned_ids:
                     resolve_library(conn, ids[lib.name], str(lib.path), lib.type, utcnow())
             link_titles(conn, config.linking)
         summary.status = "ok" if len(scanned_ids) == len(libs) else "failed"
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ScanCancelled) as exc:
         summary.status = "interrupted"
+        if isinstance(exc, ScanCancelled):
+            summary.errors.append(str(exc))
         raise
     except Exception as exc:
         summary.status = "failed"

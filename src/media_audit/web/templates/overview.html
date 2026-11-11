@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% from "_macros.html" import bars %}
+{% block title %}Overview · media-audit{% endblock %}
+{% block content %}
+{% set t = data.totals %}
+{% set n = t.main_videos %}
+{% set lib_q = ("&library=" ~ (library | urlencode)) if library else "" %}
+<div class="page-head">
+  <h1>{{ library or "All libraries" }}</h1>
+  <form method="get" class="filters compact" data-autosubmit>
+    <label>Library
+      <select name="library">
+        <option value="">All libraries</option>
+        {% for l in libraries if l.enabled %}<option value="{{ l.name }}" {% if library == l.name %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <noscript><button type="submit">Show</button></noscript>
+  </form>
+</div>
+
+<section class="tiles" aria-label="Totals">
+  <div class="tile"><span class="tile-label">Storage</span><span class="tile-value">{{ t.bytes | bytes(2) }}</span>
+    <span class="tile-sub">{% if t.unique_bytes != t.bytes %}{{ t.unique_bytes | bytes(2) }} unique on disk{% else %}&nbsp;{% endif %}</span></div>
+  <div class="tile"><span class="tile-label">Titles</span><span class="tile-value">{{ t.titles | num }}</span>
+    <span class="tile-sub">{% if t.distinct_titles != t.titles %}{{ t.distinct_titles | num }} after linking{% else %}&nbsp;{% endif %}</span></div>
+  <div class="tile"><span class="tile-label">Videos</span><span class="tile-value">{{ n | num }}</span>
+    <span class="tile-sub">{{ t.files | num }} files in total</span></div>
+  <a class="tile" href="/titles?badge=4k{{ lib_q }}"><span class="tile-label">4K titles</span><span class="tile-value">{{ data.badges.uhd | num }}</span><span class="tile-sub">&nbsp;</span></a>
+  <a class="tile" href="/titles?badge=hdr{{ lib_q }}"><span class="tile-label">HDR titles</span><span class="tile-value">{{ data.badges.hdr | num }}</span>
+    <span class="tile-sub">{{ data.badges.dv | num }} with Dolby Vision</span></a>
+  <a class="tile" href="/titles?badge=atmos{{ lib_q }}"><span class="tile-label">Atmos / DTS:X titles</span><span class="tile-value">{{ data.badges.atmos | num }}</span><span class="tile-sub">&nbsp;</span></a>
+</section>
+{% if t.analyze_errors or t.not_analyzed %}
+<p class="notice small">
+  {% if t.analyze_errors %}<a href="/files?errors=1&role=video{{ lib_q }}">{{ t.analyze_errors | num }} files couldn't be read</a>{% endif %}
+  {% if t.analyze_errors and t.not_analyzed %} · {% endif %}
+  {% if t.not_analyzed %}{{ t.not_analyzed | num }} videos not analyzed yet (the next scan reads them){% endif %}
+</p>
+{% endif %}
+
+<div class="grid">
+  {% if not library %}
+  <section class="card span-2">
+    <h2>Storage by library</h2>
+    <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Library</th><th>Type</th><th class="num">Titles</th><th class="num">Videos</th><th class="num">Files</th><th class="num">Size</th><th class="bar-col" aria-hidden="true"></th></tr></thead>
+      <tbody>
+      {% set top = data.per_library | map(attribute="bytes") | max %}
+      {% for l in data.per_library %}
+        <tr>
+          <td><a href="/?library={{ l.name | urlencode }}">{{ l.name }}</a></td>
+          <td>{{ "Movies" if l.type == "movies" else "TV" }}</td>
+          <td class="num"><a href="/titles?library={{ l.name | urlencode }}">{{ l.titles | num }}</a></td>
+          <td class="num"><a href="/files?library={{ l.name | urlencode }}">{{ l.videos | num }}</a></td>
+          <td class="num">{{ l.files | num }}</td>
+          <td class="num nowrap">{{ l.bytes | bytes(2) }}</td>
+          <td class="bar-col"><span class="bar-track"><span class="bar" style="width: {{ 100 * l.bytes / top if top else 0 }}%"></span></span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="card span-2">
+    <h2>Library size over time</h2>
+    {% if chart.ready %}
+    <div class="table-wrap"><figure class="linechart" data-linechart>
+      <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="Total size after each scan, from {{ chart.x_first }} to {{ chart.x_last }}">
+        {% for tk in chart.ticks %}
+        <line class="grid-line" x1="{{ chart.plot.left }}" x2="{{ chart.plot.right }}" y1="{{ tk.y }}" y2="{{ tk.y }}"></line>
+        <text class="axis-label" x="{{ chart.plot.left - 8 }}" y="{{ tk.y + 4 }}" text-anchor="end">{{ tk.label }}</text>
+        {% endfor %}
+        <text class="axis-label" x="{{ chart.plot.left }}" y="{{ chart.height - 6 }}">{{ chart.x_first }}</text>
+        <text class="axis-label" x="{{ chart.plot.right }}" y="{{ chart.height - 6 }}" text-anchor="end">{{ chart.x_last }}</text>
+        <path class="series-line" d="{{ chart.path }}"></path>
+        <line class="crosshair" x1="0" x2="0" y1="{{ chart.plot.top }}" y2="{{ chart.plot.bottom }}" hidden></line>
+        {% for c in chart.coords %}
+        <circle class="series-point" cx="{{ c.x }}" cy="{{ c.y }}" r="4"
+                data-tip="{{ c.at }} · scan #{{ c.scan_id }}&#10;{{ c.label }} · {{ c.files }} files"></circle>
+        {% endfor %}
+      </svg>
+      <div class="tooltip" hidden></div>
+    </figure></div>
+    <details class="small"><summary>Show as table</summary>
+      <table class="data"><thead><tr><th>Scan</th><th>Finished</th><th class="num">Files</th><th class="num">Size</th></tr></thead>
+      <tbody>{% for c in chart.coords | reverse %}<tr><td>#{{ c.scan_id }}</td><td>{{ c.at }}</td><td class="num">{{ c.files }}</td><td class="num">{{ c.label }}</td></tr>{% endfor %}</tbody></table>
+    </details>
+    {% else %}
+    <p class="muted">The chart appears after two successful scans. Each scan stores a snapshot of the totals.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Resolution</h2>
+    {{ bars(data.resolution, n, link="/files?" ~ lib_q[1:] ~ "&resolution=") }}
+  </section>
+  <section class="card">
+    <h2>Dynamic range</h2>
+    {{ bars(data.dynamic_range, n, link="/files?" ~ lib_q[1:] ~ "&dr=") }}
+  </section>
+  <section class="card">
+    <h2>Video codec</h2>
+    {{ bars(data.video_codec, n, link="/files?" ~ lib_q[1:] ~ "&codec=") }}
+  </section>
+  <section class="card">
+    <h2>Audio format <span class="muted small">files with at least one track</span></h2>
+    {{ bars(data.audio_format, n, link="/files?" ~ lib_q[1:] ~ "&audio=") }}
+  </section>
+  <section class="card">
+    <h2>Container</h2>
+    {{ bars(data.container, n, link="/files?" ~ lib_q[1:] ~ "&container=", limit=8) }}
+  </section>
+  <section class="card">
+    <h2>Source</h2>
+    {{ bars(data.source, n, link="/files?" ~ lib_q[1:] ~ "&source=", limit=8) }}
+  </section>
+  <section class="card">
+    <h2>Audio language</h2>
+    {{ bars(data.audio_language, n, link="/files?" ~ lib_q[1:] ~ "&alang=") }}
+  </section>
+  <section class="card">
+    <h2>Subtitle language</h2>
+    {% if data.subtitle_language %}{{ bars(data.subtitle_language, n) }}{% else %}<p class="muted">No subtitles found.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Release group <span class="muted small">top 12</span></h2>
+    {{ bars(data.release_group, n, link="/files?" ~ lib_q[1:] ~ "&group=") }}
+  </section>
+  <section class="card span-2">
+    <h2>Largest titles</h2>
+    <table class="data">
+      <thead><tr><th>Title</th><th>Library</th><th class="num">Videos</th><th class="num">Size</th></tr></thead>
+      <tbody>
+      {% for r in data.largest_titles %}
+        <tr><td><a href="/titles/{{ r.title_id }}">{{ r.name }}{% if r.year %} ({{ r.year }}){% endif %}</a></td>
+          <td>{{ r.library }}</td><td class="num">{{ r.video_count | num }}</td><td class="num">{{ r.bytes | bytes(2) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="small"><a href="/titles?sort=size&dir=desc{{ lib_q }}">All titles by size →</a></p>
+  </section>
+</div>
+{% endblock %}

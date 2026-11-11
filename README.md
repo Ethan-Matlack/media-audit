@@ -1,11 +1,23 @@
 # media-audit
 
-> Working name. Status: **Phase 0 + 1** (scanner, analyzer, rules, titles; CLI only).
+> Working name. Status: **Phase 0 + 1 + web UI** (scanner, analyzer, rules, titles,
+> web UI with scheduled scans).
 
 A self-hosted tool that scans a media library on disk and reports what's actually in
 it: storage per movie/show/season and technical details for every file (container,
 codecs, resolution, HDR/Dolby Vision, audio formats and languages, subtitles, release
 group...). It is read-only: it never modifies, moves, or renames media.
+
+The Docker container stays running. It serves a web UI and rescans on a schedule:
+
+- **Overview:** storage per library and library growth over time, plus charts of
+  resolution, HDR/Dolby Vision, codecs, audio formats, languages, containers, sources
+  and release groups. Every bar links to the matching files.
+- **Titles:** a sortable, filterable list with 4K/HDR/DV/Atmos badges. Each title has
+  a page with its seasons and every file's video, audio and subtitle tracks.
+- **Files:** filter by anything (resolution, HDR, codec, audio format, language, group,
+  source, size, unreadable files...), sort by size or GB per hour, and export to CSV.
+- **Scans:** history, live progress, **Scan now** and **Stop**.
 
 ## Quick start (Unraid)
 
@@ -21,64 +33,82 @@ The image is published to GitHub Container Registry as
    - **Media**: the folder that contains your libraries, e.g. `/mnt/user/media/content`
      if that's where `movies/` and `tv/` live. It's mounted read-only.
    - **Config**: leave it at `/mnt/user/appdata/media-audit`.
+   - **Web UI port**: `8484`, unless something else uses it.
+   - **Scan schedule**: leave empty for 03:00 daily, or set a cron expression (see
+     [Scheduled scans](#scheduled-scans)).
    - **PUID / PGID** (under advanced): leave them at `99` / `100` (nobody:users).
 
    Click Apply.
-3. **First start writes a config and stops.** The container looks at the folders under
-   Media and writes `/mnt/user/appdata/media-audit/config.yml`. Folder names containing
-   "movie"/"film" become movie libraries, and "tv"/"show"/"series"/"anime" become TV
-   libraries. Anything else (books, music, photos...) is listed but commented out.
-   Nothing is scanned this time. Open the container log to see what it found, and edit
-   `config.yml` if a type is wrong.
-4. **Each further start runs one scan and stops.** Press **Start** to scan, and follow
-   progress with the container's log icon. The first scan reads every file, so it takes a
-   while (about an hour for ~19,000 files; see [Scan times](#scan-times)). Later scans
-   only read new or changed files, so they finish in seconds to minutes. Stopping a scan
-   midway is safe: the next start continues where it left off.
-5. **See the results** from the Unraid terminal:
-   ```sh
-   docker run --rm -e PUID=99 -e PGID=100 -v /mnt/user/appdata/media-audit:/config \
-     ghcr.io/ethan-matlack/media-audit stats
-   ```
-   (A web UI is planned; see Phase 3 in [HANDOFF.md](HANDOFF.md).)
+3. **Open the web UI** from the container's icon → **WebUI**, or at
+   `http://<server>:8484`. On first start the container writes
+   `/mnt/user/appdata/media-audit/config.yml` from the folders under Media:
+   - Folder names containing "movie"/"film" become movie libraries.
+   - Names containing "tv"/"show"/"series"/"anime" become TV libraries.
+   - Anything else (books, music, photos...) is listed but commented out.
 
-**Scheduled scans:** with the User Scripts plugin, add a script containing
-`docker start media-audit` and schedule it (e.g. daily). The container stays "stopped"
-in the Docker tab between scans; that's expected.
+   The UI shows a banner while nothing has been scanned. Check the library list (the
+   container log shows it too), edit `config.yml` if a type is wrong (no restart
+   needed), then press **Scan now**.
+4. **Wait for the first scan.** It reads every file once: about an hour for ~19,000
+   files (see [Scan times](#scan-times)). The **Scans** page shows live progress, and
+   pages fill in when it finishes. Stopping the container mid-scan is safe: the next
+   scan continues where it left off.
+5. **After that, it keeps itself up to date.** A scan runs at 03:00 daily by default,
+   and each one only reads new or changed files (about a minute for ~21,700 files).
+
+**Command line:** the CLI still works inside the running container. Use `-u 99:100` so
+any files it writes belong to the same user as the service:
+```sh
+docker exec -u 99:100 media-audit media-audit stats
+docker exec -u 99:100 media-audit media-audit scan --retry-errors
+```
 
 **Updates:** a new `:latest` image shows as "update ready" on the Docker tab like any
 other app.
+
+**Access:** there's no login. Keep the port on your LAN, or put it behind your reverse
+proxy's authentication if you expose it. The UI can only read the database and start
+or stop scans.
 
 ## Quick start (Docker Compose)
 
 ```sh
 ./scripts/make_demo_library.sh               # tiny fake library in docker/media (needs ffmpeg)
-docker compose build
-docker compose run --rm media-audit check-config
-docker compose run --rm media-audit scan
-docker compose run --rm media-audit stats
-docker compose --profile explore up datasette    # browse the DB: http://localhost:8001
+docker compose up -d --build                 # web UI: http://localhost:8484
+docker compose exec media-audit media-audit stats
+docker compose --profile explore up datasette    # raw SQL browser: http://localhost:8001
 docker compose --profile test run --rm test      # lint + mypy + tests with real MediaInfo
 ```
 
 For a real library, set `MEDIA_ROOT` in `.env` to the folder holding the libraries
 listed in [docker/config/config.yml](docker/config/config.yml). That file is set up for
 the author's layout (`movies/`, `movies-anime/`, `tv/`, `anime/`); edit it, or delete
-it and let the first start generate one. To use the published image instead of building,
-replace `build:` with `image: ghcr.io/ethan-matlack/media-audit:latest`.
+it and let the first start generate one. Set `WEB_PORT` to publish the UI on another
+port. To use the published image instead of building, replace `build:` with
+`image: ghcr.io/ethan-matlack/media-audit:latest`.
 
 ### How the container behaves
 
+- **Default command** is `serve`: the web UI on port 8484 plus the scan scheduler, in
+  one long-running process. Pass another command to run it once instead, e.g.
+  `docker run --rm ... ghcr.io/ethan-matlack/media-audit stats`.
 - **Mounts:** `/config` (config file and SQLite DB; keep it on local disk, not on the
   network share) and `/media` (your libraries, mounted read-only).
 - **User:** started as root (Unraid's default), it makes `/config` writable for
   `PUID:PGID` (default 1000:1000), then drops to that user. Started with `--user` or
   compose `user:`, it simply runs as that user.
 - **First start:** with no `/config/config.yml`, it writes one from the folders under
-  `/media` and exits without scanning. `media-audit init-config` does the same thing
-  outside Docker.
-- **Default command** is `scan`. Pass another command to run something else, e.g.
-  `docker run ... ghcr.io/ethan-matlack/media-audit stats`.
+  `/media` and waits for **Scan now** (or the next scheduled scan) rather than scanning
+  straight away. `media-audit init-config` does the same thing outside Docker.
+- **Config changes** are picked up without a restart. `config.yml` is re-read before
+  every scan, and the schedule is re-checked every 20 seconds. A broken config is shown
+  in the UI, and the last valid one stays in use.
+- **One scan at a time:** a scheduled scan, **Scan now** and a `docker exec ... scan`
+  share a lock. If one is already running, the others are skipped, not queued.
+- **Stopping:** `docker stop` (or **Stop** on the Scans page) finishes the files being
+  read and stops. The next scan resumes from there. A scan killed outright (power loss)
+  is marked `interrupted` next time.
+- **Health:** the image has a healthcheck on `/healthz`.
 - **Image tags:** `latest` follows `main`, `X.Y.Z` and `X.Y` come from release tags, and
   `sha-<commit>` marks a specific build.
 
@@ -93,12 +123,14 @@ uv run media-audit init-config --media-root /path/to/media   # or copy config.ex
 uv run media-audit check-config
 uv run media-audit scan
 uv run media-audit stats
+uv run media-audit serve          # web UI on http://localhost:8484 + scheduled scans
 ```
 
 ## Commands
 
 | command | does |
 |---|---|
+| `serve [--host H] [--port P]` | web UI plus scheduled scans (the Docker default) |
 | `scan [-l LIB] [--no-analyze] [--retry-errors] [-w N]` | walk libraries, analyze new/changed files, rebuild titles |
 | `rederive` | re-apply all rules to stored MediaInfo data; reads no media files |
 | `stats [-l LIB] [--json]` | library breakdowns |
@@ -117,8 +149,8 @@ uv run media-audit stats
 
 ### Scan times
 
-For reference, a first full scan of a mixed movie and TV library of **19,244 files**
-took **55 minutes** in the Docker container on an Unraid server, with the default
+For reference, a first full scan of a mixed movie and TV library of **19,244 video
+files** (21,698 files in total, including subtitles and artwork) took **55 minutes** in the Docker container on an Unraid server, with the default
 settings (2 workers). That works out to about
 350 files a minute, or roughly 0.17 seconds per file.
 
@@ -130,19 +162,42 @@ settings (2 workers). That works out to about
   workers can help on SSDs or several array disks, but can slow down a single spinning
   disk.
 - **Rescans:** unchanged files aren't reopened, so a rescan costs one directory walk
-  plus the new or changed files.
+  plus the new or changed files. On the same library, a rescan with a few renames and
+  deletions took **61 seconds** for 21,691 files.
 
 ## Configuration
 
 See [config.example.yml](config.example.yml). Any key can be overridden with
 `MEDIA_AUDIT_<KEY>` env vars, using `__` for nesting (`MEDIA_AUDIT_SCAN__WORKERS=4`).
+An empty variable counts as unset, so the config file decides. To turn something off,
+use a value like `off` (e.g. `MEDIA_AUDIT_SCAN__SCHEDULE=off`).
 `MEDIA_AUDIT_CONFIG` selects the config file. `MEDIA_AUDIT_AUTO_INIT` and
 `MEDIA_AUDIT_MEDIA_ROOT` control the Docker image's first-start config and are not
 config keys.
 
+### Scheduled scans
+
+`scan.schedule` is a standard 5-field cron expression (minute, hour, day of month,
+month, weekday), in the container's time zone (`TZ`; Unraid sets it from the server's
+own setting):
+
+| schedule | runs |
+|---|---|
+| `0 3 * * *` (default) | 03:00 every day |
+| `0 */6 * * *` | every 6 hours |
+| `30 2 * * sun` | Sundays at 02:30 |
+| `@hourly`, `@daily`, `@weekly` | shortcuts |
+| `off` | never (use **Scan now**) |
+
+Ranges (`mon-fri`), lists (`1,15`) and steps (`*/15`) work as usual. Rescans are cheap,
+so even hourly is fine. A scheduled scan that comes due while another is running is
+skipped.
+
 ## Exploring the data
 
-The main views are `v_media` (one row per live video file with derived fields) and
+The web UI covers the common questions. For anything else, the SQLite database is
+plain SQL: open it with `sqlite3`, or run the Datasette profile in compose. The main
+views are `v_media` (one row per live video file with derived fields) and
 `v_titles` (one row per title with sizes and 4K/HDR/DV/Atmos badges). Titles that
 are the same movie or show in different libraries share a `group_key`.
 
@@ -162,6 +217,9 @@ src/media_audit/
   pipeline.py          scan orchestration, worker pool, lock
   stats.py, cli.py
   init_config.py       starter config from a media folder (first start / init-config)
+  cron.py              cron expressions for scheduled scans
+  web/                 `serve`: scan service + scheduler, Starlette app, Jinja templates,
+                       static CSS/JS (no build step, no CDN)
 scripts/               fixture capture/generation, demo library
 docker/                entrypoint (PUID/PGID), compose config
 unraid/                Unraid container template
@@ -199,4 +257,6 @@ isn't missed. See
 ## License
 
 MIT. Runtime dependencies: pymediainfo (MIT) with bundled libmediainfo (BSD-2-Clause),
-PyYAML (MIT), pydantic (MIT).
+PyYAML (MIT), pydantic (MIT), Starlette (BSD-3-Clause), uvicorn (BSD-3-Clause), Jinja2
+(BSD-3-Clause), and their dependencies (anyio, h11, click, idna, MarkupSafe,
+typing-extensions: MIT, BSD or PSF licensed).

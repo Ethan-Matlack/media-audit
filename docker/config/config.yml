@@ -30,6 +30,12 @@ scan:
   # re-parsed at this speed, abandoned after retry_timeout seconds (0 disables).
   retry_parse_speed: 0.05
   retry_timeout: 60
+  # Scheduled scans in the web service (cron, container time zone TZ); 'off' disables.
+  # A rescan of ~21,700 files takes about a minute.
+  schedule: "0 3 * * *"
+
+web:
+  port: 8484
 
 linking:
   by_id: true

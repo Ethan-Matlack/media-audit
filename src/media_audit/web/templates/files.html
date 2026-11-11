@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_macros.html" import sort_th, pager, select, video_summary %}
+{% block title %}Files · media-audit{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Files</h1>
+  <a class="button" href="/files.csv{{ qs(params, page=None) }}" download>Export CSV</a>
+</div>
+<form method="get" class="filters" data-autosubmit>
+  <label class="grow">Path contains <input type="search" name="q" value="{{ params.q or '' }}" placeholder="e.g. Season 01, x265, Remux"></label>
+  <label>Library
+    <select name="library"><option value="">All</option>
+      {% for l in libraries %}<option value="{{ l.name }}" {% if params.library == l.name %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Show
+    <select name="role">
+      {% for v, label in [("main", "Main videos"), ("video", "All videos"), ("extra", "Extras"), ("sample", "Samples"), ("subtitle", "Subtitle files"), ("other", "Other files"), ("all", "Everything")] %}
+      <option value="{{ v }}" {% if params.get("role", "main") == v %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {{ select("resolution", "Resolution", options.resolution, params) }}
+  {{ select("dr", "Dynamic range", options.dr, params) }}
+  {{ select("codec", "Video codec", options.codec, params) }}
+  {{ select("audio", "Audio", options.audio, params) }}
+  {{ select("alang", "Audio language", options.alang, params) }}
+  {{ select("container", "Container", options.container, params) }}
+  {{ select("source", "Source", options.source + ["(none)"], params) }}
+  {{ select("group", "Release group", options.group + ["(none)"], params) }}
+  <label class="narrow">Min GB <input type="number" name="min_gb" min="0" step="any" value="{{ params.min_gb or '' }}"></label>
+  <label class="narrow">Max GB <input type="number" name="max_gb" min="0" step="any" value="{{ params.max_gb or '' }}"></label>
+  <label class="check"><input type="checkbox" name="remux" value="1" {% if params.remux == "1" %}checked{% endif %}> Remux</label>
+  <label class="check"><input type="checkbox" name="errors" value="1" {% if params.errors == "1" %}checked{% endif %}> Unreadable</label>
+  {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
+  {% if params.dir %}<input type="hidden" name="dir" value="{{ params.dir }}">{% endif %}
+  <noscript><button type="submit">Filter</button></noscript>
+  {% if params | reject("in", ["sort", "dir", "page"]) | list %}<a class="small" href="/files">Clear filters</a>{% endif %}
+</form>
+
+<div id="results">
+<p class="muted small">{{ page.total | num }} files</p>
+<div class="table-wrap">
+<table class="data files">
+  <thead><tr>
+    {{ sort_th("File", "path", params, "asc") }}
+    {{ sort_th("Library", "library", params, "asc") }}
+    {{ sort_th("Video", "resolution", params, "desc") }}
+    <th>Audio</th>
+    {{ sort_th("Group", "group", params, "asc") }}
+    {{ sort_th("Length", "duration", params, "desc", "num") }}
+    {{ sort_th("GB/h", "gbh", params, "desc", "num") }}
+    {{ sort_th("Size", "size", params, "desc", "num") }}
+  </tr></thead>
+  <tbody>
+  {% for f in page.rows %}
+  <tr>
+    <td class="path">
+      {% if f.title_id %}<a href="/titles/{{ f.title_id }}">{{ f.rel_path }}</a>{% else %}{{ f.rel_path }}{% endif %}
+      {% if f.analyze_error %}<div class="error small">{{ f.analyze_error }}</div>{% endif %}
+    </td>
+    <td>{{ f.library }}</td>
+    <td class="nowrap">{{ video_summary(f) }}</td>
+    <td>{% for a in f.audio[:3] %}<div class="track">{{ a | audio_label }} <span class="muted">{{ a.language }}</span></div>{% endfor %}
+      {% if f.audio | length > 3 %}<div class="muted small">+{{ f.audio | length - 3 }} more</div>{% endif %}</td>
+    <td>{{ f.release_group or "" }}</td>
+    <td class="num nowrap">{{ f.duration_s | runtime }}</td>
+    <td class="num">{{ '%.1f' % f.gb_per_hour if f.gb_per_hour else "–" }}</td>
+    <td class="num nowrap">{{ f.size_bytes | bytes(2) }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">No files match these filters.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{{ pager(page, params) }}
+</div>
+{% endblock %}

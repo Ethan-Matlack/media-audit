@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% from "_macros.html" import video_summary %}
+{% block title %}{{ title.name }} · media-audit{% endblock %}
+{% macro file_rows(rows, show_episode) %}
+<div class="table-wrap">
+<table class="data files">
+  <thead><tr>
+    {% if show_episode %}<th>Episode</th>{% endif %}
+    <th>File</th><th>Video</th><th>Audio</th><th>Subtitles</th><th class="num">Length</th><th class="num">Size</th>
+  </tr></thead>
+  <tbody>
+  {% for f in rows %}
+  <tr class="{{ 'dim' if f.role != 'main' }}">
+    {% if show_episode %}<td class="nowrap">{{ f | episode }}</td>{% endif %}
+    <td class="path">
+      {{ f.filename }}
+      <div class="muted small">
+        {% if f.role != "main" %}<span class="badge quiet">{{ f.role }}</span>{% endif %}
+        {% if f.release_group %}{{ f.release_group }}{% endif %}
+        {% if f.source %} · {{ f.source }}{% endif %}{% if f.is_remux %} remux{% endif %}
+        {% if f.edition %} · {{ f.edition }}{% endif %}
+        {% if f.container %} · {{ f.container }}{% endif %}
+      </div>
+      {% if f.analyze_error %}<div class="error small">{{ f.analyze_error }}</div>{% endif %}
+    </td>
+    <td class="nowrap">{% if f.is_video %}{{ video_summary(f) }}{% if f.width %}<div class="muted small">{{ f.width }}×{{ f.height }}{% if f.frame_rate %} · {{ '%.3g' % f.frame_rate }} fps{% endif %}{% if f.overall_bitrate %} · {{ f.overall_bitrate | bitrate }}{% endif %}</div>{% endif %}{% endif %}</td>
+    <td>
+      {% for a in f.audio %}<div class="track">{{ a | audio_label }} <span class="muted">{{ a.language }}</span>{% if a.is_default %} <span class="muted small">default</span>{% endif %}</div>{% endfor %}
+    </td>
+    <td>
+      {% if f.subs %}
+      <span title="{% for s in f.subs %}{{ s.language }} {{ s.format or '' }}{% if s.is_forced %} forced{% endif %}{% if s.is_hearing_impaired %} SDH{% endif %}{% if s.is_external %} (file){% endif %}&#10;{% endfor %}">
+        {{ f.subs | map(attribute="language") | unique | join(", ") }}
+      </span>
+      {% endif %}
+    </td>
+    <td class="num nowrap">{{ f.duration_s | runtime }}</td>
+    <td class="num nowrap">{{ f.size_bytes | bytes(2) }}{% if f.gb_per_hour %}<div class="muted small">{{ '%.1f' % f.gb_per_hour }} GB/h</div>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+
+{% block content %}
+<p class="crumbs"><a href="/titles?library={{ title.library | urlencode }}">{{ title.library }}</a> /</p>
+<div class="page-head">
+  <h1>{{ title.name }}{% if title.year %} <span class="muted">({{ title.year }})</span>{% endif %}</h1>
+</div>
+<section class="tiles">
+  <div class="tile"><span class="tile-label">Size</span><span class="tile-value">{{ title.folder_size_bytes | bytes(2) }}</span>
+    <span class="tile-sub">{{ title.media_size_bytes | bytes }} video · {{ title.other_size_bytes | bytes }} other</span></div>
+  <div class="tile"><span class="tile-label">{{ "Episodes" if title.kind == "show" else "Videos" }}</span><span class="tile-value">{{ title.video_count | num }}</span>
+    <span class="tile-sub">{{ title.file_count | num }} files{% if title.kind == "movie" and title.version_count > 1 %} · {{ title.version_count }} versions{% endif %}</span></div>
+  {% if seasons %}<div class="tile"><span class="tile-label">Seasons</span><span class="tile-value">{{ seasons | length }}</span><span class="tile-sub">&nbsp;</span></div>{% endif %}
+  <div class="tile"><span class="tile-label">IDs</span>
+    <span class="tile-sub ids">
+      {% if title.tmdb_id %}<a href="https://www.themoviedb.org/{{ 'tv' if title.kind == 'show' else 'movie' }}/{{ title.tmdb_id }}" rel="noreferrer">TMDB {{ title.tmdb_id }}</a>{% endif %}
+      {% if title.imdb_id %}<a href="https://www.imdb.com/title/{{ title.imdb_id }}/" rel="noreferrer">IMDb {{ title.imdb_id }}</a>{% endif %}
+      {% if title.tvdb_id %}<a href="https://thetvdb.com/dereferrer/series/{{ title.tvdb_id }}" rel="noreferrer">TVDB {{ title.tvdb_id }}</a>{% endif %}
+      {% if not (title.tmdb_id or title.imdb_id or title.tvdb_id) %}<span class="muted">none in folder or file names</span>{% endif %}
+    </span></div>
+</section>
+<p class="muted small path">{{ title.folder_path }}</p>
+
+{% if linked %}
+<section class="card">
+  <h2>Also in</h2>
+  <ul class="plain">{% for l in linked %}<li><a href="/titles/{{ l.id }}">{{ l.library }}: {{ l.name }}{% if l.year %} ({{ l.year }}){% endif %}</a> <span class="muted">{{ l.bytes | bytes(2) }}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+{% if title.kind == "show" and seasons %}
+<section class="card">
+  <h2>Seasons</h2>
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Season</th><th class="num">Episodes</th><th class="num">Size</th></tr></thead>
+    <tbody>{% for s in seasons %}
+      <tr><td><a href="#season-{{ s.season_number if s.season_number is not none else 'unknown' }}">{{ "Specials" if s.season_number == 0 else ("Season " ~ s.season_number if s.season_number is not none else "Unknown") }}</a></td>
+        <td class="num">{{ s.episode_count | num }}</td><td class="num">{{ s.bytes | bytes(2) }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  </div>
+</section>
+{% for season, rows in by_season.items() %}
+<details class="card season" id="season-{{ season if season is not none else 'unknown' }}" {% if by_season | length <= 2 %}open{% endif %}>
+  <summary><h2>{{ "Specials" if season == 0 else ("Season " ~ season if season is not none else "Other files") }}
+    <span class="muted small">{{ rows | selectattr("is_video") | list | length }} videos · {{ rows | sum(attribute="size_bytes") | bytes(2) }}</span></h2></summary>
+  {{ file_rows(rows, true) }}
+</details>
+{% endfor %}
+{% else %}
+<section class="card">
+  <h2>Files</h2>
+  {{ file_rows(files, false) }}
+</section>
+{% endif %}
+{% endblock %}

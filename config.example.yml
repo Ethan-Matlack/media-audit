@@ -31,10 +31,20 @@ scan:
   # If that fails, the track title is used as an "Atmos?" hint. 0 disables the retry.
   retry_parse_speed: 0.05
   retry_timeout: 60
+  # When `serve` (the Docker default) scans by itself: a cron expression in the
+  # container's time zone (TZ), e.g. "0 3 * * *" = 03:00 daily, "0 */6 * * *" = every
+  # 6 hours. "off" disables scheduled scans; the web UI's "Scan now" button still works.
+  schedule: "0 3 * * *"
   follow_symlinks: false
   # Glob patterns matched against file/folder *names*. Setting this replaces the
   # defaults (NAS metadata dirs like @eaDir/#recycle, .DS_Store, *.part, ...).
   # ignore: ["@eaDir", "#recycle", ".*"]
+
+# The web UI (`media-audit serve`). No login: keep it on your LAN or behind a reverse
+# proxy. In Docker, change the published port rather than this one.
+web:
+  host: 0.0.0.0
+  port: 8484
 
 # Link the same movie/show across libraries (e.g. movies + movies-4k).
 linking:

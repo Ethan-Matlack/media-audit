@@ -119,6 +119,7 @@ def test_docker_config_is_valid() -> None:
         ("anime", "tv"),
     }
     assert cfg.scan.parse_speed == 0 and cfg.scan.retry_timeout == 60
+    assert cfg.scan.schedule == "0 3 * * *" and cfg.web.port == 8484
 
 
 # --------------------------------------------------------------------------- migrations

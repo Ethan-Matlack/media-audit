@@ -1,4 +1,4 @@
-"""Command-line interface: ``media-audit scan | rederive | stats | check-config | init-config``."""
+"""Command-line interface: ``media-audit serve | scan | rederive | stats | check-config | ...``."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def _open_db(cfg: Config) -> Any:
 
 def cmd_scan(args: argparse.Namespace) -> int:
     from media_audit.analyzer import AnalyzerUnavailable, get_analyzer
-    from media_audit.pipeline import ScanLocked, run_scan, scan_lock
+    from media_audit.pipeline import ProgressEvent, ScanLocked, run_scan, scan_lock
     from media_audit.scanner import ScanError
 
     cfg = _load(args)
@@ -73,9 +73,9 @@ def cmd_scan(args: argparse.Namespace) -> int:
     if args.workers:
         cfg.scan.workers = args.workers
 
-    def progress(msg: str) -> None:
+    def progress(event: ProgressEvent) -> None:
         if not args.quiet:
-            print(msg, file=sys.stderr, flush=True)
+            print(event.message, file=sys.stderr, flush=True)
 
     try:
         with scan_lock(cfg.database):
@@ -234,8 +234,24 @@ def cmd_init_config(args: argparse.Namespace) -> int:
     return _generate_config(_init_target(args), args.media_root, args.force)
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from media_audit.web.server import serve
+
+    if args.host:
+        os.environ["MEDIA_AUDIT_WEB__HOST"] = args.host
+    if args.port:
+        os.environ["MEDIA_AUDIT_WEB__PORT"] = str(args.port)
+    cfg = _load(args)  # fail fast on a broken config
+    return serve(cfg, config_path=args.config, db_override=args.db,
+                 first_start=bool(getattr(args, "first_start", False)))  # fmt: skip
+
+
 def _auto_init(args: argparse.Namespace) -> int | None:
-    """Docker first start: create a config from /media and stop so it can be reviewed."""
+    """Docker first start: create a config from /media for review.
+
+    One-shot commands stop there; ``serve`` keeps running (without scanning) so the web
+    UI can say a config was just created.
+    """
     if os.environ.get(AUTO_INIT_ENV) != "1" or args.command == "init-config":
         return None
     found = find_config_path()
@@ -245,6 +261,13 @@ def _auto_init(args: argparse.Namespace) -> int | None:
     media_root = Path(os.environ.get(MEDIA_ROOT_ENV) or DEFAULT_MEDIA_ROOT)
     print(f"No config found at {target}; creating one (first start).")
     rc = _generate_config(target, media_root, force=False)
+    if rc == 0 and args.command == "serve":
+        print(
+            "Review the library list above (edit the file if needed), then use Scan now "
+            "in the web UI. Nothing is scanned until then or the next scheduled scan."
+        )
+        args.first_start = True
+        return None
     if rc == 0:
         print(
             "Review the library list and types above (edit the file if needed), then start "
@@ -266,6 +289,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--db", type=Path, help="override the database path")
     parser.add_argument("-v", "--verbose", action="count", default=0)
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("serve", help="run the web UI and scheduled scans (the Docker default)")
+    p.add_argument("--host", help="override web.host (default 0.0.0.0)")
+    p.add_argument("--port", type=int, help="override web.port (default 8484)")
+    p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("scan", help="walk libraries, analyze new/changed files, update the DB")
     p.add_argument("-l", "--library", action="append", help="only this library (repeatable)")
@@ -302,7 +330,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    level = logging.WARNING - 10 * min(args.verbose, 2)
+    # serve is a long-running service: log scans to the container log by default.
+    base = logging.INFO if args.command == "serve" else logging.WARNING
+    level = max(logging.DEBUG, base - 10 * min(args.verbose, 2))
     logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     try:
         initialized = _auto_init(args)

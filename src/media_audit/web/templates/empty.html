@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}media-audit{% endblock %}
+{% block content %}
+<section class="card empty">
+  <h1>Nothing scanned yet</h1>
+  {% if status.scan.running %}
+  <p>The first scan is running. Reading every file takes a while (about an hour for ~20,000
+    files); <a href="/scans">follow its progress</a>. Pages fill in as soon as it finishes.</p>
+  {% else %}
+  <p>Run the first scan to see what's in your libraries. It reads every video's headers once
+    (about an hour for ~20,000 files); later scans only read new or changed files.</p>
+  <form method="post" action="/scans/run"><button type="submit" class="button primary">Scan now</button></form>
+  {% if libraries %}
+  <p class="muted small">Libraries: {% for l in libraries %}{{ l.name }} ({{ l.type }}){{ ", " if not loop.last }}{% endfor %}</p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

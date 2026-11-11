@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_macros.html" import sort_th, pager, title_badges %}
+{% block title %}Titles · media-audit{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Titles</h1></div>
+<form method="get" class="filters" data-autosubmit>
+  <label class="grow">Search <input type="search" name="q" value="{{ params.q or '' }}" placeholder="Title name"></label>
+  <label>Library
+    <select name="library"><option value="">All</option>
+      {% for l in libraries %}<option value="{{ l.name }}" {% if params.library == l.name %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Type
+    <select name="kind"><option value="">All</option>
+      <option value="movie" {% if params.kind == "movie" %}selected{% endif %}>Movies</option>
+      <option value="show" {% if params.kind == "show" %}selected{% endif %}>Shows</option>
+    </select>
+  </label>
+  <label>Has
+    <select name="badge"><option value="">Anything</option>
+      {% for k, label in [("4k", "4K"), ("hdr", "HDR"), ("dv", "Dolby Vision"), ("atmos", "Atmos / DTS:X")] %}
+      <option value="{{ k }}" {% if params.badge == k %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
+  {% if params.dir %}<input type="hidden" name="dir" value="{{ params.dir }}">{% endif %}
+  <noscript><button type="submit">Filter</button></noscript>
+</form>
+
+<div id="results">
+<p class="muted small">{{ page.total | num }} titles</p>
+<div class="table-wrap">
+<table class="data">
+  <thead><tr>
+    {{ sort_th("Title", "name", params, "asc") }}
+    {{ sort_th("Year", "year", params, "desc", "num") }}
+    {{ sort_th("Library", "library", params, "asc") }}
+    <th>Has</th>
+    {{ sort_th("Videos", "files", params, "desc", "num") }}
+    {{ sort_th("Size", "size", params, "desc", "num") }}
+  </tr></thead>
+  <tbody>
+  {% for t in page.rows %}
+    <tr>
+      <td><a href="/titles/{{ t.id }}">{{ t.name }}</a>
+        {% if t.kind == "show" and t.seasons %}<span class="muted small">{{ t.seasons }} season{{ "s" if t.seasons != 1 }}</span>{% endif %}
+        {% if t.version_count > 1 %}<span class="muted small">{{ t.version_count }} versions</span>{% endif %}
+      </td>
+      <td class="num">{{ t.year or "" }}</td>
+      <td>{{ t.library }}</td>
+      <td>{{ title_badges(t) }}</td>
+      <td class="num">{{ t.video_count | num }}</td>
+      <td class="num">{{ t.bytes | bytes(2) }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">No titles match these filters.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{{ pager(page, params) }}
+</div>
+{% endblock %}
