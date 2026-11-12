@@ -395,6 +395,11 @@ def _file_filters(q: Mapping[str, str]) -> tuple[str, list[Any]]:
     if q.get("q"):
         where.append("f.rel_path LIKE ?")
         params.append(f"%{q['q']}%")
+    if q.get("folder"):
+        # Everything in one folder (and its subfolders), matched as a literal prefix.
+        folder = q["folder"].strip("/") + "/"
+        where.append("substr(f.rel_path, 1, ?) = ?")
+        params.extend([len(folder), folder])
     for key, cond in _EQ_FILTERS.items():
         if q.get(key):
             if q[key] == "(none)":

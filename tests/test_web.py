@@ -214,6 +214,20 @@ def test_files_filters_and_csv(client: TestClient) -> None:
     assert "TrueHD Atmos" in uhd["audio"]
 
 
+def test_files_folder_link_lists_the_whole_folder(client: TestClient) -> None:
+    page = client.get("/files?q=Heat").text
+    # The grey folder line links to every file in that folder, not to the title.
+    href = page.split('class="file-folder" href="')[1].split('"')[0].replace("&amp;", "&")
+    assert "folder=Heat+%281995%29" in href and "role=all" in href and "q=" not in href
+    folder = client.get("/files" + href).text
+    assert "3 files" in folder and "Heat (1995).en.srt" in folder and "Alien" not in folder
+    assert "all folders" in folder
+    # Matched as a prefix, so subfolders count and a partial folder name doesn't.
+    assert "3 files" in client.get("/files?library=tv&role=all&folder=Show (2010)").text
+    assert "2 files" in client.get("/files?library=tv&role=all&folder=Show (2010)/Season 01").text
+    assert "0 files" in client.get("/files?library=tv&role=all&folder=Show").text
+
+
 def test_scan_now_endpoint(config_file: Path) -> None:
     service = _service(config_file)
     client = TestClient(create_app(service))
