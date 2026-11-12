@@ -34,9 +34,13 @@
 {% macro pager(page, params) %}
 {% if page.pages > 1 %}
 <nav class="pager" aria-label="Pages">
-  {% if page.page > 1 %}<a href="{{ qs(params, page=page.page - 1) }}" rel="prev">← Prev</a>{% else %}<span class="muted">← Prev</span>{% endif %}
+  {% if page.page > 1 %}<a href="{{ qs(params, page=None) }}" rel="first">« First</a>
+  <a href="{{ qs(params, page=page.page - 1) }}" rel="prev">← Prev</a>
+  {% else %}<span class="muted">« First</span><span class="muted">← Prev</span>{% endif %}
   <span>Page {{ page.page }} of {{ page.pages | num }}</span>
-  {% if page.page < page.pages %}<a href="{{ qs(params, page=page.page + 1) }}" rel="next">Next →</a>{% else %}<span class="muted">Next →</span>{% endif %}
+  {% if page.page < page.pages %}<a href="{{ qs(params, page=page.page + 1) }}" rel="next">Next →</a>
+  <a href="{{ qs(params, page=page.pages) }}" rel="last">Last »</a>
+  {% else %}<span class="muted">Next →</span><span class="muted">Last »</span>{% endif %}
 </nav>
 {% endif %}
 {% endmacro %}

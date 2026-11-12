@@ -125,3 +125,29 @@ def test_files_page_multi_select(db: tuple[Any, Config], tmp_path: Path) -> None
     assert "alang=en&amp;alang=ja" in two.split("<thead>")[1].split("</thead>")[0]
     csv = client.get("/files.csv?alang=en&alang=ja").text
     assert len(csv.strip().splitlines()) == 1 + 3
+
+
+def test_pager_first_and_last(db: tuple[Any, Config], tmp_path: Path, monkeypatch: Any) -> None:
+    import re
+
+    _, cfg = db
+    monkeypatch.setattr(queries, "PAGE_SIZE", 2)  # 5 files -> 3 pages
+    cfg_file = tmp_path / "web.yml"
+    cfg_file.write_text(f"database: {cfg.database}\nlibraries: []\nscan:\n  schedule: off\n")
+    client = TestClient(create_app(ScanService(cfg_file)))
+
+    def links(url: str) -> dict[str, str]:
+        parts = client.get(url).text.split('<nav class="pager"')
+        nav = parts[1].split("</nav>")[0] if len(parts) > 1 else ""
+        return {rel: href.replace("&amp;", "&")
+                for href, rel in re.findall(r'href="([^"]*)" rel="(\w+)"', nav)}  # fmt: skip
+
+    assert links("/files?alang=ja") == {}  # 2 files: one page, no pager
+    first = links("/files")
+    assert first == {"next": "?page=2", "last": "?page=3"}  # First/Prev shown, not links
+    middle = links("/files?library=anime&library=movies&page=2")
+    assert middle == {"first": "?library=anime&library=movies",
+                      "prev": "?library=anime&library=movies&page=1",
+                      "next": "?library=anime&library=movies&page=3",
+                      "last": "?library=anime&library=movies&page=3"}  # fmt: skip
+    assert set(links("/files?page=3")) == {"first", "prev"}
