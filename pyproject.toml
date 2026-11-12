@@ -3,7 +3,7 @@ name = "media-audit"
 dynamic = ["version"]  # from src/media_audit/__init__.py (the only place to change it)
 description = "Scan a media library on disk and report what's actually in it."
 readme = "README.md"
-license = "MIT"
+license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "Ethan Matlack" }]
@@ -12,7 +12,8 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Topic :: Multimedia :: Video",
 ]
-# Every runtime dependency must be permissively licensed (MIT/BSD/Apache-style; no GPL/LGPL).
+# media-audit is GPL-3.0-or-later; every runtime dependency must be GPL-3.0-compatible.
+# All of them are permissively licensed:
 #   pymediainfo  MIT   (wraps libmediainfo, BSD-2-Clause, installed separately)
 #   PyYAML       MIT
 #   pydantic     MIT

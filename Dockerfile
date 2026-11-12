@@ -51,7 +51,7 @@ FROM python:${PYTHON_VERSION}-slim-${DEBIAN_RELEASE} AS runtime
 
 LABEL org.opencontainers.image.title="media-audit" \
       org.opencontainers.image.description="Scan a media library and report what's actually in it" \
-      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later" \
       org.opencontainers.image.source="https://github.com/Ethan-Matlack/media-audit"
 
 COPY --from=build /app/.venv /app/.venv

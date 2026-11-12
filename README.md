@@ -375,7 +375,18 @@ isn't missed. See
 
 ## License
 
-MIT. Runtime dependencies: pymediainfo (MIT) with bundled libmediainfo (BSD-2-Clause),
-PyYAML (MIT), pydantic (MIT), Starlette (BSD-3-Clause), uvicorn (BSD-3-Clause), Jinja2
-(BSD-3-Clause), and their dependencies (anyio, h11, click, idna, MarkupSafe,
-typing-extensions: MIT, BSD or PSF licensed).
+Copyright (C) 2026 Ethan Matlack
+
+media-audit is free software: you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version. It is distributed in
+the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE)
+for the full text.
+
+Releases up to and including 0.4.0 were published under the MIT license.
+
+Runtime dependencies, all GPL-compatible: pymediainfo (MIT) with bundled libmediainfo
+(BSD-2-Clause), PyYAML (MIT), pydantic (MIT), Starlette (BSD-3-Clause), uvicorn
+(BSD-3-Clause), Jinja2 (BSD-3-Clause), and their dependencies (anyio, h11, click, idna,
+MarkupSafe, typing-extensions: MIT, BSD or PSF licensed).
