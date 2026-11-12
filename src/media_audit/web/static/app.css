@@ -240,7 +240,7 @@ table.issues tr.ignored td { opacity: 0.55; }
 .topbar nav .count { display: inline-block; min-width: 1.4em; padding: 0 0.35em; margin-left: 0.15rem;
   border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border);
   font-size: 0.75rem; font-weight: 600; text-align: center; color: var(--text-2); }
-.issue-mark { margin-left: 0.35rem; font-size: 0.78rem; color: var(--warn); white-space: nowrap; }
+.issue-mark { margin-left: 0.6rem; font-size: 0.78rem; color: var(--warn); white-space: nowrap; }
 .empty-inline p { margin: 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 

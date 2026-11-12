@@ -395,6 +395,11 @@ def _file_filters(q: Mapping[str, str]) -> tuple[str, list[Any]]:
     if q.get("q"):
         where.append("f.rel_path LIKE ?")
         params.append(f"%{q['q']}%")
+    if q.get("folder"):
+        # Everything in one folder (and its subfolders), matched as a literal prefix.
+        folder = q["folder"].strip("/") + "/"
+        where.append("substr(f.rel_path, 1, ?) = ?")
+        params.extend([len(folder), folder])
     for key, cond in _EQ_FILTERS.items():
         if q.get(key):
             if q[key] == "(none)":
@@ -718,8 +723,15 @@ def issues_csv_rows(conn: sqlite3.Connection, q: Mapping[str, str]) -> Iterator[
         chk = CHECKS.get(r["code"])
         yield [r["severity"], chk.category if chk else "", chk.heading if chk else r["code"],
                r["library"], r["title_name"] or "", r["season_number"] or "",
-               r["file_path"] or "", r["message"], r["bytes_recoverable"] or "",
+               r["file_path"] or _issue_folder(r["data"]), r["message"],
+               r["bytes_recoverable"] or "",
                "yes" if r["ignored"] else ""]  # fmt: skip
+
+
+def _issue_folder(data: str | None) -> str:
+    """The folder a folder-level issue is about (they have no file)."""
+    folder = json.loads(data).get("folder") if data else None
+    return f"{folder}/" if folder else ""
 
 
 def open_issue_count(conn: sqlite3.Connection) -> int:

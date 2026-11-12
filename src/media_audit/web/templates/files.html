@@ -32,6 +32,7 @@
   <label class="narrow">Max GB <input type="number" name="max_gb" min="0" step="any" value="{{ params.max_gb or '' }}"></label>
   <label class="check"><input type="checkbox" name="remux" value="1" {% if params.remux == "1" %}checked{% endif %}> Remux</label>
   <label class="check"><input type="checkbox" name="errors" value="1" {% if params.errors == "1" %}checked{% endif %}> Unreadable</label>
+  {% if params.folder %}<input type="hidden" name="folder" value="{{ params.folder }}">{% endif %}
   {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
   {% if params.dir %}<input type="hidden" name="dir" value="{{ params.dir }}">{% endif %}
   <noscript><button type="submit">Filter</button></noscript>
@@ -39,7 +40,7 @@
 </form>
 
 <div id="results">
-<p class="muted small">{{ page.total | num }} files</p>
+<p class="muted small">{{ page.total | num }} files{% if params.folder %} in <code>{{ params.folder }}/</code> <a href="{{ qs(params, folder=None, page=None) }}" title="Stop filtering by folder">× all folders</a>{% endif %}</p>
 <div class="table-wrap">
 <table class="data files">
   <thead><tr>
@@ -58,7 +59,7 @@
     {% set folder = f.rel_path[: -(f.filename | length) - 1] if f.rel_path != f.filename else "" %}
     <td class="path">
       <div class="file-name">{% if f.title_id %}<a href="/titles/{{ f.title_id }}">{{ f.filename }}</a>{% else %}{{ f.filename }}{% endif %}</div>
-      {% if folder %}<a class="file-folder" href="{{ qs(params, q=folder ~ '/', page=None) }}" title="Show only files in {{ folder }}/">{{ folder }}/</a>{% endif %}
+      {% if folder %}<a class="file-folder" href="{{ qs({}, library=f.library, folder=folder, role='all', sort=params.sort, dir=params.dir) }}" title="Show every file in {{ folder }}/">{{ folder }}/</a>{% endif %}
       {% if f.analyze_error %}<div class="error small">{{ f.analyze_error }}</div>{% endif %}
     </td>
     <td>{{ f.library }}</td>

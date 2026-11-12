@@ -15,7 +15,7 @@ Severity = Literal["error", "warning", "info"]
 SEVERITY_ORDER: dict[str, int] = {"error": 0, "warning": 1, "info": 2}
 
 # Bump when checks change so a running container recomputes issues on start.
-FLAGS_VERSION = 1
+FLAGS_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,20 @@ _CHECKS = [
           "leftover archives, text files. Expected types are set in "
           "flags.allowed_extensions; anything inside an extras folder (Extras, "
           "Featurettes, Commentaries…) counts as bonus material."),
+    Check("no_video_folder", "problems", "warning", "Folders with no videos left",
+          "A movie, show or season folder that only holds artwork, metadata, subtitles or "
+          "other leftovers. Usually what's left after the video was deleted, moved or "
+          "renamed into another folder."),
+    Check("empty_folder", "problems", "warning", "Empty folders",
+          "Folders with nothing in them (files matched by scan.ignore don't count). Often "
+          "left behind by a rename. Only the outermost empty folder is listed."),
     # ---- duplicates
+    Check("split_season", "duplicates", "warning", "Seasons split across folders",
+          "Two or more folders in one show for the same season, e.g. Season 1 and "
+          "Season 01, or Specials and Season 00. Usually an old folder left behind by a "
+          "rename. Recoverable space counts only folders without videos; duplicate "
+          "episodes between the folders are listed under Same episode stored more than "
+          "once."),
     Check("duplicate_episode", "duplicates", "warning", "Same episode stored more than once",
           "An episode with several files (two qualities, or a leftover copy). Recoverable "
           "space assumes you keep only the largest file."),

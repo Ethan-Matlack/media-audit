@@ -85,7 +85,9 @@
       <tr class="{{ 'ignored' if r.ignored }}" data-issue-row>
         <td class="nowrap">{{ severity_badge(r.severity) }}</td>
         <td><strong>{{ r.check.heading if r.check else r.code }}</strong><br>{{ r.message }}
-          {% if r.file_path %}<div class="muted small">{{ r.file_path }}</div>{% endif %}</td>
+          {% if r.file_path %}<div class="muted small">{{ r.file_path }}</div>
+          {% elif r.data and r.data.folder %}<div class="muted small">{{ r.data.folder }}/</div>{% endif %}
+          {% if r.data and r.data.folders %}<ul class="file-list small muted">{% for d in r.data.folders %}<li>{{ d.path }}/ · {{ d.summary }}</li>{% endfor %}</ul>{% endif %}</td>
         <td class="actions-col">{{ ignore_button(r, request.url.path) }}</td>
       </tr>
     {% endfor %}
