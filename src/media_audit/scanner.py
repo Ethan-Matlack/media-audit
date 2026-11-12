@@ -12,7 +12,7 @@ import fnmatch
 import logging
 import os
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,6 +42,8 @@ class FoundFile:
 @dataclass
 class WalkResult:
     errors: list[str] = field(default_factory=list)
+    dirs: list[str] = field(default_factory=list)  # every folder listed, relative to root
+    unlisted: list[str] = field(default_factory=list)  # folders that couldn't be listed
 
 
 @dataclass
@@ -60,6 +62,26 @@ def _ignored(name: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatchcase(folded, p.casefold()) for p in patterns)
 
 
+def _rel(path: str, root: str) -> str:
+    return os.path.relpath(path, root).replace(os.sep, "/")
+
+
+def empty_folders(dirs: Iterable[str], files: Iterable[str], unlisted: Iterable[str]) -> list[str]:
+    """Folders with no files anywhere below them; only the topmost of an empty subtree.
+
+    Paths are relative to the library root. A folder that couldn't be listed counts as
+    occupied (we don't know what's in it), and so do the folders above it.
+    """
+    occupied: set[str] = set()
+    for path in [*files, *(u + "/x" for u in unlisted)]:
+        parent = path.rpartition("/")[0]
+        while parent and parent not in occupied:
+            occupied.add(parent)
+            parent = parent.rpartition("/")[0]
+    empty = {d for d in dirs if d not in occupied}
+    return sorted(d for d in empty if d.rpartition("/")[0] not in empty)
+
+
 def walk(
     root: Path, ignore: list[str], follow_symlinks: bool, result: WalkResult
 ) -> Iterator[FoundFile]:
@@ -73,7 +95,11 @@ def walk(
                 entries = sorted(it, key=lambda e: e.name)
         except OSError as exc:
             result.errors.append(f"cannot list {current}: {exc.strerror or exc}")
+            if current != root_str:
+                result.unlisted.append(_rel(current, root_str))
             continue
+        if current != root_str:
+            result.dirs.append(_rel(current, root_str))
         subdirs = []
         for entry in entries:
             if _ignored(entry.name, ignore):
@@ -90,7 +116,7 @@ def walk(
             except OSError as exc:
                 result.errors.append(f"cannot stat {entry.path}: {exc.strerror or exc}")
                 continue
-            rel = os.path.relpath(entry.path, root_str).replace(os.sep, "/")
+            rel = _rel(entry.path, root_str)
             yield FoundFile(
                 path=entry.path,
                 rel_path=rel,
@@ -153,6 +179,7 @@ def sync_library(
 
     walk_result = WalkResult()
     seen_paths: set[str] = set()
+    seen_rel: list[str] = []
     unchanged_ids: list[int] = []
     pending_new: list[FoundFile] = []
 
@@ -169,6 +196,7 @@ def sync_library(
         for f in walk(root, ignore, follow_symlinks, walk_result):
             stats.seen += 1
             seen_paths.add(f.path)
+            seen_rel.append(f.rel_path)
             row = existing.get(f.path)
             if row is None:
                 pending_new.append(f)
@@ -268,6 +296,13 @@ def sync_library(
         for row in missing.values():
             stats.deleted += 1
             conn.execute("UPDATE files SET deleted_at = ? WHERE id = ?", (now, row["id"]))
+
+        conn.execute("DELETE FROM empty_folders WHERE library_id = ?", (library_id,))
+        conn.executemany(
+            "INSERT INTO empty_folders (library_id, rel_path) VALUES (?, ?)",
+            [(library_id, d) for d in
+             empty_folders(walk_result.dirs, seen_rel, walk_result.unlisted)],
+        )  # fmt: skip
 
     log.info(
         "library %s: %d seen, %d new, %d changed, %d moved, %d deleted, %d errors",

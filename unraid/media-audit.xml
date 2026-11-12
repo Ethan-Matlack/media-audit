@@ -24,6 +24,7 @@
 ### 0.3.1
 - Files page: the grey folder line under each file name lists every file in that folder.
 - Titles page: the issue count now follows the season count.
+- Issues: new folder checks: seasons split across folders (Season 1 + Season 01), folders with no videos left, and empty folders.
 - Template: icon, updated description.
 
 ### 0.3.0

@@ -16,7 +16,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from media_audit.classify import EXTRAS_FOLDERS
+from media_audit.classify import EXTRAS_FOLDERS, season_folder_number
 from media_audit.config import Config
 from media_audit.db import get_meta, set_meta, transaction, utcnow
 from media_audit.rules.flags import (
@@ -146,6 +146,8 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
             out.add(f["library"], Flag("no_audio", f"no_audio:{f['id']}", _fp(f),
                                        f["library_id"], "Video with no audio track",
                                        f["title_id"], f["id"], f["season_number"]))  # fmt: skip
+
+    _folder_checks(conn, files, out)
 
     # ---------------------------------------------------------------- duplicates
     episodes: dict[tuple[int, int, int], list[sqlite3.Row]] = defaultdict(list)
@@ -326,6 +328,134 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
                 f"(preferred: {', '.join(sorted(preferred))})",
                 f["title_id"], f["id"], f["season_number"]))  # fmt: skip
     return out.flags
+
+
+def _season_name(n: int) -> str:
+    return "Specials" if n == 0 else f"Season {n}"
+
+
+def _folder_summary(rows: list[sqlite3.Row], show: bool) -> str:
+    """'10 episodes, 8.1 GB' / 'no videos: nfo, jpg x2, 15 KB' / 'empty'."""
+    if not rows:
+        return "empty"
+    size = _size(sum(r["size_bytes"] for r in rows))
+    videos = sum(1 for r in rows if r["is_video"] and r["role"] == "main")
+    if videos:
+        word = "episode" if show else "video"
+        return f"{videos} {word}{'s' if videos != 1 else ''}, {size}"
+    if any(r["is_video"] for r in rows):
+        return f"only extras or samples, {size}"
+    exts = Counter((r["ext"] or "no extension") for r in rows)
+    kinds = ", ".join(e if n == 1 else f"{e} ×{n}" for e, n in exts.most_common(6))
+    if len(exts) > 6:
+        kinds += ", …"
+    return f"no videos: {kinds}, {size}"
+
+
+def _folder_checks(conn: sqlite3.Connection, files: list[sqlite3.Row], out: _Collector) -> None:
+    """Leftover folders: seasons split across folders, folders without videos, empty ones.
+
+    Folders are relative to the library root: ``Show`` (a title folder) and
+    ``Show/Season 01`` (a season folder, in shows only).
+    """
+    libs = {r["id"]: r for r in conn.execute(
+        "SELECT id, name, type, path FROM libraries WHERE enabled = 1")}  # fmt: skip
+    title_ids: dict[tuple[int, str], int] = {}
+    for r in conn.execute("SELECT id, library_id, folder_path FROM titles"):
+        lib = libs.get(r["library_id"])
+        root = lib["path"].rstrip("/") + "/" if lib else None
+        if root and r["folder_path"].startswith(root):
+            title_ids[(r["library_id"], r["folder_path"][len(root) :])] = r["id"]
+
+    def is_show(lib_id: int) -> bool:
+        return bool(libs[lib_id]["type"] != "movies")
+
+    tops: dict[tuple[int, str], list[sqlite3.Row]] = defaultdict(list)
+    # (library, show folder, season number) -> season folder name -> files
+    seasons: dict[tuple[int, str, int], dict[str, list[sqlite3.Row]]] = defaultdict(dict)
+    for f in files:
+        parts = f["rel_path"].split("/")
+        if len(parts) < 2:
+            continue  # loose file in the library root
+        tops[(f["library_id"], parts[0])].append(f)
+        if len(parts) >= 3 and is_show(f["library_id"]):
+            n = season_folder_number(parts[1])
+            if n is not None:
+                seasons[(f["library_id"], parts[0], n)].setdefault(parts[1], []).append(f)
+
+    empties = [(r["library_id"], r["rel_path"]) for r in conn.execute(
+        "SELECT e.library_id, e.rel_path FROM empty_folders e "
+        "JOIN libraries l ON l.id = e.library_id AND l.enabled = 1 ORDER BY 1, 2")]  # fmt: skip
+    for lib_id, rel in empties:
+        parts = rel.split("/")
+        if len(parts) == 2 and is_show(lib_id):
+            n = season_folder_number(parts[1])
+            if n is not None:
+                seasons[(lib_id, parts[0], n)].setdefault(parts[1], [])
+
+    # A title folder with no videos at all is reported once, not again per season.
+    videoless: set[tuple[int, str]] = set()
+    for (lib_id, top), rows in sorted(tops.items()):
+        if any(r["is_video"] for r in rows):
+            continue
+        videoless.add((lib_id, top))
+        lib = libs[lib_id]
+        out.add(lib["name"], Flag(
+            "no_video_folder", f"no_video_folder:{lib['name']}:{top}",
+            ",".join(sorted(_fp(r) for r in rows)), lib_id,
+            f"{'Show' if is_show(lib_id) else 'Movie'} folder with "
+            f"{_folder_summary(rows, is_show(lib_id))}",
+            title_ids.get((lib_id, top)),
+            data={"folder": top, "files": [{"path": r["rel_path"], "size": r["size_bytes"]}
+                                           for r in rows[:20]]}))  # fmt: skip
+
+    split: set[tuple[int, str]] = set()  # season folders already reported as split
+    for (lib_id, top, n), folders in sorted(seasons.items()):
+        if (lib_id, top) in videoless:
+            continue
+        lib = libs[lib_id]
+        names = sorted(folders, key=lambda d: (-len(folders[d]), d))
+        if len(folders) > 1:
+            split.update((lib_id, f"{top}/{d}") for d in names)
+            with_videos = [d for d in names if any(r["is_video"] for r in folders[d])]
+            spare = sum(r["size_bytes"] for d in names if d not in with_videos
+                        for r in folders[d]) if with_videos else 0  # fmt: skip
+            listing = "; ".join(f"{d} ({_folder_summary(folders[d], True)})" for d in names)
+            out.add(lib["name"], Flag(
+                "split_season", f"split_season:{lib['name']}:{top}:S{n}",
+                ",".join(f"{d}:{len(folders[d])}:{sum(r['size_bytes'] for r in folders[d])}"
+                         for d in sorted(names)), lib_id,
+                f"{_season_name(n)} is in {len(names)} folders: {listing}",
+                title_ids.get((lib_id, top)), None, n,
+                {"folders": [{"path": f"{top}/{d}",
+                              "summary": _folder_summary(folders[d], True)} for d in names]},
+                spare or None))  # fmt: skip
+            continue
+        (name,) = names
+        rows = folders[name]
+        if rows and not any(r["is_video"] for r in rows):
+            out.add(lib["name"], Flag(
+                "no_video_folder", f"no_video_folder:{lib['name']}:{top}/{name}",
+                ",".join(sorted(_fp(r) for r in rows)), lib_id,
+                f"{_season_name(n)} folder with {_folder_summary(rows, True)}",
+                title_ids.get((lib_id, top)), None, n,
+                {"folder": f"{top}/{name}",
+                 "files": [{"path": r["rel_path"], "size": r["size_bytes"]}
+                           for r in rows[:20]]}))  # fmt: skip
+
+    for lib_id, rel in empties:
+        if (lib_id, rel) in split:
+            continue
+        lib = libs[lib_id]
+        top = rel.split("/")[0]
+        what = (
+            ("Empty show folder" if is_show(lib_id) else "Empty movie folder")
+            if "/" not in rel
+            else "Empty folder"
+        )
+        out.add(lib["name"], Flag(
+            "empty_folder", f"empty_folder:{lib['name']}:{rel}", "", lib_id, what,
+            title_ids.get((lib_id, top)), data={"folder": rel}))  # fmt: skip
 
 
 def _in_extras_folder(rel_path: str) -> bool:

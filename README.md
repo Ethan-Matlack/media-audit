@@ -211,6 +211,9 @@ check, errors first; the nav shows how many errors and warnings are open.
 | `disc_image` | error | `.iso`/`.img` instead of a video file |
 | `no_audio` | warning | video with no audio track |
 | `stray_file` | warning | not video, subtitles, artwork or metadata (partial downloads, `.txt`, `.dat`...); extras folders are exempt |
+| `no_video_folder` | warning | movie, show or season folder with only artwork, metadata or other leftovers |
+| `empty_folder` | warning | folder with nothing in it (files matched by `scan.ignore` don't count) |
+| `split_season` | warning | one season in two folders, e.g. `Season 1` and `Season 01`, or `Specials` and `Season 00` |
 | `duplicate_episode` | warning | one episode stored as several files; shows the space freed by keeping the largest |
 | `orphan_subtitle` | warning | subtitle file with no video of the same name |
 | `multi_version_movie` | info | several versions of one movie (often deliberate) |
@@ -228,7 +231,8 @@ check, errors first; the nav shows how many errors and warnings are open.
 Peer comparisons skip specials and seasons with fewer than `flags.min_peers` episodes.
 Gaps in episode numbers are counted from E01, or from the first episode when a season
 starts past E03 (absolute anime numbering); missing episodes after the last one present
-can't be detected without an online database.
+can't be detected without an online database. Empty folders are recorded during the scan,
+so they show up after the first scan with this version.
 
 **Ignore** hides an issue you've accepted (a deliberate second version, a known short
 episode). It lasts until the files involved change, then the issue comes back. Ignores
