@@ -151,3 +151,111 @@ def test_pager_first_and_last(db: tuple[Any, Config], tmp_path: Path, monkeypatc
                       "next": "?library=anime&library=movies&page=3",
                       "last": "?library=anime&library=movies&page=3"}  # fmt: skip
     assert set(links("/files?page=3")) == {"first", "prev"}
+
+
+# --------------------------------------------------------------------------- grouping
+
+GROUP_TV = {  # file -> audio languages
+    "Show A/Season 01/Show A - S01E01.mkv": ["ja"],
+    "Show A/Season 01/Show A - S01E02.mkv": ["ja"],
+    "Show A/Season 01/Show A - S01E03.mkv": ["ja"],  # the whole season pack lacks English
+    "Show A/Season 02/Show A - S02E01.mkv": ["ja", "en"],
+    "Show A/Season 02/Show A - S02E02.mkv": ["ja"],  # one odd episode
+    "Show A/Specials/Show A - S00E01.mkv": ["ja"],
+    "Show B/Season 01/Show B - S01E01.mkv": ["en"],
+}
+GROUP_MOVIES = {"Movie (2000)/Movie (2000).mkv": ["ja"]}
+
+
+@pytest.fixture
+def grouped(
+    make_tree: Callable[[str, dict[str, int | str]], Path], make_config: Callable[..., Config]
+) -> tuple[Any, Config]:
+    cfg = make_config(
+        tv=(make_tree("tv", dict.fromkeys(GROUP_TV, 1000)), "tv"),
+        movies=(make_tree("movies", dict.fromkeys(GROUP_MOVIES, 3000)), "movies"),
+    )
+    conn = connect(cfg.database)
+    run_scan(conn, cfg, analyzer=FakeAnalyzer({}))
+    conn.execute("DELETE FROM audio_tracks")
+    audio = {**GROUP_TV, **GROUP_MOVIES}
+    for fid, rel in conn.execute("SELECT id, rel_path FROM files WHERE is_video = 1").fetchall():
+        for i, lang in enumerate(audio[rel]):
+            conn.execute("INSERT INTO audio_tracks (file_id, idx, language, codec) "
+                         "VALUES (?, ?, ?, 'AAC')", (fid, i, lang))  # fmt: skip
+    conn.commit()
+    return conn, cfg
+
+
+def _groups(conn: Any, query: str) -> dict[tuple[str, Any], tuple[int, int]]:
+    q = ImmutableMultiDict([tuple(p.split("=", 1)) for p in query.split("&") if p])
+    data = queries.file_groups(conn, q)
+    return {(r["title_name"], r["season"]): (r["n"], r["of"]) for r in data["rows"]}
+
+
+def test_group_by_season_and_title(grouped: tuple[Any, Config]) -> None:
+    conn, _ = grouped
+    no_en = "alang=en&alang_not=1"
+    # "N of M": M is every file in that season, so 3 of 3 = the whole season pack.
+    assert _groups(conn, f"{no_en}&by=season") == {
+        ("Show A", 1): (3, 3), ("Show A", 2): (1, 2), ("Show A", 0): (1, 1),
+        ("Movie", None): (1, 1),
+    }  # fmt: skip
+    assert _groups(conn, f"{no_en}&by=title") == {("Show A", None): (5, 6),
+                                                      ("Movie", None): (1, 1)}  # fmt: skip
+    data = queries.file_groups(conn, ImmutableMultiDict([("alang", "en"), ("alang_not", "1"),
+                                                         ("by", "season")]))  # fmt: skip
+    assert (data["files"], data["total"], data["titles"]) == (6, 4, 2)
+    # Largest first by default (the movie is 3 KB, Show A S01 is 3 x 1 KB).
+    assert [(r["title_name"], r["season"]) for r in data["rows"]][:1] == [("Movie", None)]
+    s2 = next(r for r in data["rows"] if r["season"] == 2)
+    assert s2["audio_languages"] == ["ja"]  # only the matching file's languages
+
+
+def test_group_drill_down(grouped: tuple[Any, Config]) -> None:
+    conn, _ = grouped
+    tid = conn.execute("SELECT id FROM titles WHERE name = 'Show A'").fetchone()[0]
+
+    def names(query: str) -> list[str]:
+        q = ImmutableMultiDict([tuple(p.split("=", 1)) for p in query.split("&") if p])
+        return sorted(r["filename"] for r in queries.files(conn, q).rows)
+
+    # "Files →" on Show A / Season 2 lists exactly that group's matching files.
+    assert names(f"alang=en&alang_not=1&title={tid}&season=2") == ["Show A - S02E02.mkv"]
+    assert len(names(f"title={tid}&season=2")) == 2
+    assert names(f"title={tid}&season=0") == ["Show A - S00E01.mkv"]
+    assert len(names(f"title={tid}")) == 6
+    assert queries.title_label(conn, str(tid), "2") == "Show A · Season 2"
+    assert queries.title_label(conn, str(tid), "0") == "Show A · Specials"
+
+
+def test_grouped_page_and_csv(grouped: tuple[Any, Config], tmp_path: Path) -> None:
+    import csv
+    import io
+
+    conn, cfg = grouped
+    cfg_file = tmp_path / "web.yml"
+    cfg_file.write_text(f"database: {cfg.database}\nlibraries: []\nscan:\n  schedule: off\n")
+    client = TestClient(create_app(ScanService(cfg_file)))
+    page = client.get("/files?alang=en&alang_not=1&by=season").text
+    assert "<strong>6</strong> files" in page and "in 4 seasons and movies (2 titles)" in page
+    assert "<strong>3</strong> of 3" in page and "<strong>1</strong> of 2" in page
+    assert ">Specials<" in page and ">Movie<" in page
+    tid = conn.execute("SELECT id FROM titles WHERE name = 'Show A'").fetchone()[0]
+    drill = f"/files?alang=en&amp;alang_not=1&amp;title={tid}&amp;season=2"
+    assert f'href="{drill}"' in page  # "Files →" keeps the filters, drops the grouping
+    detail = client.get(drill.replace("&amp;", "&")).text
+    assert "In Show A · Season 2" in detail and 'name="season" value="2"' in detail
+
+    rows = list(csv.DictReader(io.StringIO(
+        client.get("/files.csv?alang=en&alang_not=1&by=season").text)))  # fmt: skip
+    assert len(rows) == 4
+    s1 = next(r for r in rows if r["title"] == "Show A" and r["season"] == "1")
+    assert (s1["matching_files"], s1["files_in_group"], s1["audio_languages"]) == ("3", "3", "ja")
+
+
+def test_grouping_and_release_group_filter_coexist(grouped: tuple[Any, Config]) -> None:
+    conn, _ = grouped
+    # "group" is the release-group filter; grouping is "by". Both at once must work.
+    both = _groups(conn, "by=season&group=(none)")
+    assert both == _groups(conn, "by=season") and len(both) == 5

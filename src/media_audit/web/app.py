@@ -400,10 +400,15 @@ def create_app(service: ScanService) -> Starlette:
 
     def files(request: Request, conn: sqlite3.Connection) -> Response:
         params = request.query_params
-        page = db.cached(_key("files", params), lambda: queries.files(conn, params))
         facets = db.cached(_key("facets", params), lambda: queries.facet_counts(conn, params))
-        return render(request, "files.html", _conn=conn, page=page, facets=facets,
-                      facet_defs=queries.FACETS)  # fmt: skip
+        groups = page = None
+        if queries.group_mode(params):
+            groups = db.cached(_key("groups", params), lambda: queries.file_groups(conn, params))
+        else:
+            page = db.cached(_key("files", params), lambda: queries.files(conn, params))
+        scope = queries.title_label(conn, params.get("title"), params.get("season"))
+        return render(request, "files.html", _conn=conn, page=page, groups=groups,
+                      facets=facets, facet_defs=queries.FACETS, scope=scope)  # fmt: skip
 
     async def files_csv(request: Request) -> Response:
         path = db_path()
@@ -416,7 +421,12 @@ def create_app(service: ScanService) -> Starlette:
             writer = csv.writer(buf)
             with db.connection(path) as conn:
                 assert conn is not None
-                for i, row in enumerate(queries.files_csv_rows(conn, params)):
+                rows = (
+                    queries.file_groups_csv_rows
+                    if queries.group_mode(params)
+                    else queries.files_csv_rows
+                )(conn, params)
+                for i, row in enumerate(rows):
                     writer.writerow(row)
                     if i % 500 == 0:
                         yield buf.getvalue()

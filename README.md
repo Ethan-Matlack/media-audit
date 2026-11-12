@@ -292,6 +292,12 @@ audio track*: Library = anime, Audio language → Has none of → en.
 * Audio and subtitle filters look at every track: "Has none of en" keeps a
   Japanese-only file and one with no audio, but not a dual-audio one. An untagged track
   is "(unknown)", never assumed to be English.
+* **Group by Titles or Seasons** collapses the list into one row per show/movie or per
+  season (movies stay one row each), with the files that match out of all the files in
+  that group: "22 of 22" means the whole season pack, "1 of 14" one odd episode. Each
+  row shows the group's resolutions, codecs, audio languages and release groups, and
+  **Files →** lists just that group's matching files. Export CSV exports one row per
+  group when grouped.
 * Path can be "contains" or "doesn't contain". The page shows the total size of the
   matching files, active filters as removable chips, and the URL is shareable; Export
   CSV uses the same filters.

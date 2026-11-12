@@ -118,7 +118,7 @@
     const results = $("#results");
     if (!results) return;
     results.addEventListener("click", (e) => {
-      const a = e.target.closest("thead a, .pager a");
+      const a = e.target.closest("thead a, .pager a, .group-by a");
       if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
       e.preventDefault();
       swapResults(a.href, true).then(() => {
@@ -128,7 +128,7 @@
       // Keep the hidden sort/dir inputs in step so later filter changes keep the sort.
       const u = new URL(a.href);
       for (const form of $$("form[data-autosubmit]")) {
-        for (const key of ["sort", "dir"]) {
+        for (const key of ["sort", "dir", "by"]) {
           let input = form.querySelector(`input[type=hidden][name=${key}]`);
           const v = u.searchParams.get(key);
           if (v && !input) {

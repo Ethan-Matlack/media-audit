@@ -165,13 +165,14 @@
 {% endmacro %}
 
 {#- One removable chip per active filter, plus "Clear all". -#}
-{% macro active_filters(facet_defs, facets, params) %}
+{% macro active_filters(facet_defs, facets, params, scope=none) %}
 {% set chips = [] %}
 {% for f in facet_defs %}{% set sel = facets[f.key] | selectattr("selected") | list %}{% if sel %}
   {% set _ = chips.append((f.label ~ ": " ~ ("not " if params.get(f.key ~ "_not") == "1" else "") ~ (sel | map(attribute="label") | join(", ")), {f.key: None, f.key ~ "_not": None})) %}
 {% endif %}{% endfor %}
 {% if params.q %}{% set _ = chips.append(("Path " ~ ("doesn't contain" if params.q_not == "1" else "contains") ~ " “" ~ params.q ~ "”", {"q": None, "q_not": None})) %}{% endif %}
 {% if params.folder %}{% set _ = chips.append(("In " ~ params.folder ~ "/", {"folder": None})) %}{% endif %}
+{% if scope %}{% set _ = chips.append(("In " ~ scope, {"title": None, "season": None})) %}{% endif %}
 {% if params.min_gb %}{% set _ = chips.append(("At least " ~ params.min_gb ~ " GB", {"min_gb": None})) %}{% endif %}
 {% if params.max_gb %}{% set _ = chips.append(("At most " ~ params.max_gb ~ " GB", {"max_gb": None})) %}{% endif %}
 {% if params.remux == "1" %}{% set _ = chips.append(("Remux", {"remux": None})) %}{% endif %}
@@ -179,7 +180,7 @@
 {% if chips %}
 <div class="chips" aria-label="Active filters">
   {% for text, drop in chips %}<a class="chip" href="{{ qs(params, page=None, **drop) }}" title="Remove this filter">{{ text }} <span aria-hidden="true">×</span></a>{% endfor %}
-  <a class="small" href="/files{{ qs({}, role=params.role, sort=params.sort, dir=params.dir) }}">Clear all</a>
+  <a class="small" href="/files{{ qs({}, role=params.role, by=params.by, sort=params.sort, dir=params.dir) }}">Clear all</a>
 </div>
 {% endif %}
 {% endmacro %}

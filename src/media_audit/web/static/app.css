@@ -327,3 +327,21 @@ tr:target > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 }
 .chip:hover { text-decoration: none; border-color: var(--accent); }
 .chip span { color: var(--text-3); }
+
+/* ---------------------------------------------------------------- grouped files */
+.group-by { display: inline-flex; align-items: center; gap: 0.15rem; }
+.group-by .muted { margin-right: 0.35rem; }
+.group-by a {
+  font-size: 0.85rem; padding: 0.15rem 0.6rem; border: 1px solid var(--border); color: var(--text);
+  background: var(--surface);
+}
+.group-by a:first-of-type { border-radius: 6px 0 0 6px; }
+.group-by a:last-of-type { border-radius: 0 6px 6px 0; }
+.group-by a + a { margin-left: -1px; }
+.group-by a:hover { text-decoration: none; background: var(--surface-2); }
+.group-by a[aria-current] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.ref-sub { display: block; margin-top: 0.1rem; font-size: 0.8rem; color: var(--text-3); }
+.matching { display: inline-flex; align-items: center; gap: 0.4rem; }
+.meter { display: inline-block; width: 3rem; height: 0.4rem; border-radius: 999px; background: var(--track); overflow: hidden; }
+.meter > span { display: block; height: 100%; background: var(--accent); }
+.small-button { padding: 0.2rem 0.6rem; font-size: 0.82rem; white-space: nowrap; }

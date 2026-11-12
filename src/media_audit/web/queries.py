@@ -467,6 +467,18 @@ def _file_filters(q: Mapping[str, str], skip: str | None = None) -> tuple[str, l
         folder = q["folder"].strip("/") + "/"
         where.append("substr(f.rel_path, 1, ?) = ?")
         params.extend([len(folder), folder])
+    # Drill-down from a grouped row: one title (or files without one), one season.
+    title, season = q.get("title"), q.get("season")
+    if title == "none":
+        where.append("f.title_id IS NULL")
+    elif title and title.isdigit():
+        where.append("f.title_id = ?")
+        params.append(int(title))
+    if season == "none":
+        where.append(f"{SEASON_EXPR} IS NULL")
+    elif season and season.isdigit():
+        where.append(f"{SEASON_EXPR} = ?")
+        params.append(int(season))
     for facet in FACETS:
         vals = values(q, facet.key)
         if vals and facet.key != skip:
@@ -492,7 +504,11 @@ _FILE_FROM = """
     JOIN libraries l ON l.id = f.library_id
     LEFT JOIN video_info v ON v.file_id = f.id
     LEFT JOIN release_info r ON r.file_id = f.id
+    LEFT JOIN titles ti ON ti.id = f.title_id
+    LEFT JOIN seasons se ON se.id = f.season_id
 """
+# The season a file belongs to (shows only): its season folder, else its SxxEyy.
+SEASON_EXPR = "(CASE WHEN ti.kind = 'show' THEN coalesce(se.season_number, f.season_number) END)"
 
 
 def files(conn: sqlite3.Connection, q: Mapping[str, str]) -> Page:
@@ -512,6 +528,135 @@ def files(conn: sqlite3.Connection, q: Mapping[str, str]) -> Page:
     )
     attach_tracks(conn, rows)
     return Page(rows, total, page, pages, total_bytes)
+
+
+# --------------------------------------------------------------------------- grouped view
+
+GROUP_MODES = ("title", "season")
+GROUP_SORTS = {
+    "size": "bytes",
+    "count": "n",
+    "name": "lower(coalesce(ti.name, '~')), ti.year, season",
+    "library": "l.name, lower(coalesce(ti.name, '~'))",
+}
+
+
+def group_mode(q: Mapping[str, str]) -> str | None:
+    mode = q.get("by")  # not "group": that's the release-group filter
+    return mode if mode in GROUP_MODES else None
+
+
+def _group_key(mode: str) -> str:
+    season = SEASON_EXPR if mode == "season" else "NULL"
+    return f"l.name, f.title_id, {season}"
+
+
+def _distinct(joined: str | None, order: dict[str, int] | None = None) -> list[str]:
+    vals = sorted(set((joined or "").split(",")) - {""})
+    return sorted(vals, key=lambda v: (order.get(v, 9), v)) if order else vals
+
+
+def file_groups(conn: sqlite3.Connection, q: Mapping[str, str], *,
+                paged: bool = True) -> dict[str, Any]:  # fmt: skip
+    """Matching files grouped by title or by season, with how many of each group's files
+    match ("22 of 22": the whole season) and the values they have."""
+    mode = group_mode(q) or "season"
+    where, params = _file_filters(q)
+    key = _group_key(mode)
+    base = f"{_FILE_FROM} WHERE {where} GROUP BY {key}"
+    total, titles, n_files, n_bytes = conn.execute(
+        "SELECT count(*), count(DISTINCT coalesce(title_id, -1)), coalesce(sum(n), 0), "
+        "coalesce(sum(bytes), 0) FROM (SELECT f.title_id AS title_id, count(*) AS n, "
+        f"sum(f.size_bytes) AS bytes {base})",
+        params,
+    ).fetchone()
+    page, pages = _page(total, _int(q.get("page"))) if paged else (1, 1)
+    sort = GROUP_SORTS.get(q.get("sort", ""), GROUP_SORTS["size"])
+    direction = "ASC" if q.get("dir") == "asc" else "DESC"  # the column headers set dir
+    limit = "LIMIT ? OFFSET ?" if paged else ""
+    rows = _rows(conn.execute(
+        f"""SELECT l.name AS library, f.title_id, ti.name AS title_name, ti.year AS title_year,
+                   ti.kind, {SEASON_EXPR if mode == "season" else "NULL"} AS season,
+                   count(*) AS n, sum(f.size_bytes) AS bytes,
+                   group_concat(DISTINCT v.resolution_class) AS resolutions,
+                   group_concat(DISTINCT v.codec) AS codecs,
+                   group_concat(DISTINCT r.release_group) AS release_groups
+            {base} ORDER BY {sort} {direction}, {key} {limit}""",
+        [*params, PAGE_SIZE, (page - 1) * PAGE_SIZE] if paged else params,
+    ))  # fmt: skip
+    _attach_group_details(conn, q, mode, rows, where, params)
+    return {"mode": mode, "rows": rows, "total": total, "titles": titles, "files": n_files,
+            "bytes": n_bytes, "page": page, "pages": pages}  # fmt: skip
+
+
+def _attach_group_details(conn: sqlite3.Connection, q: Mapping[str, str], mode: str,
+                          rows: list[dict[str, Any]], where: str,
+                          params: list[Any]) -> None:  # fmt: skip
+    """Per group: all its files (the "of M"), audio languages, and display values."""
+    if not rows:
+        return
+    key = _group_key(mode)
+    season = SEASON_EXPR if mode == "season" else "NULL"
+    ids = sorted({r["title_id"] for r in rows if r["title_id"] is not None})
+    in_ids = f"f.title_id IN ({','.join('?' * len(ids))})" if ids else "0"
+    scope = f"(({in_ids}) OR f.title_id IS NULL)"
+
+    def keyed(sql: str, args: list[Any]) -> dict[tuple[Any, ...], Any]:
+        return {(r[0], r[1], r[2]): r[3] for r in conn.execute(sql, args)}
+
+    # "of M": every file in the group that the Show setting includes, ignoring the filters.
+    role_where, role_params = _file_filters({"role": q.get("role", "main")})
+    of = keyed(
+        f"SELECT l.name, f.title_id, {season}, count(*) {_FILE_FROM} "
+        f"WHERE {role_where} AND {scope} GROUP BY {key}",
+        [*role_params, *ids],
+    )
+    langs = keyed(f"SELECT l.name, f.title_id, {season}, group_concat(DISTINCT a.language) "
+                  f"{_FILE_FROM} JOIN audio_tracks a ON a.file_id = f.id "
+                  f"WHERE {where} AND {scope} GROUP BY {key}", [*params, *ids])  # fmt: skip
+    for r in rows:
+        k = (r["library"], r["title_id"], r["season"])
+        r["of"] = of.get(k, r["n"])
+        r["audio_languages"] = [("(unknown)" if v == UNKNOWN_LANG else v)
+                                for v in _distinct(langs.get(k))]  # fmt: skip
+        r["resolutions"] = _distinct(r["resolutions"], _RES_ORDER)
+        r["codecs"] = _distinct(r["codecs"])
+        r["release_groups"] = _distinct(r["release_groups"])
+
+
+GROUP_CSV_COLUMNS = ["library", "title", "year", "season", "matching_files", "files_in_group",
+                     "size_bytes", "resolutions", "video_codecs", "audio_languages",
+                     "release_groups", "title_id"]  # fmt: skip
+
+
+def file_groups_csv_rows(conn: sqlite3.Connection, q: Mapping[str, str]) -> Iterator[list[Any]]:
+    yield GROUP_CSV_COLUMNS
+    for r in file_groups(conn, q, paged=False)["rows"]:
+        yield [r["library"], r["title_name"] or "", r["title_year"] or "",
+               "" if r["season"] is None else r["season"], r["n"], r["of"], r["bytes"],
+               " ".join(r["resolutions"]), " ".join(r["codecs"]),
+               " ".join(r["audio_languages"]), " ".join(r["release_groups"]),
+               r["title_id"] or ""]  # fmt: skip
+
+
+def title_label(conn: sqlite3.Connection, title_id: str | None, season: str | None) -> str | None:
+    """'Attack on Titan (2013) · Season 3' for the drill-down chip."""
+    if title_id == "none":
+        name = "(no title)"
+    elif title_id and title_id.isdigit():
+        row = conn.execute(
+            "SELECT name, year FROM titles WHERE id = ?", (int(title_id),)
+        ).fetchone()
+        name = (
+            f"{row['name']} ({row['year']})"
+            if row and row["year"]
+            else (row["name"] if row else "?")
+        )
+    else:
+        return None
+    if season and season.isdigit():
+        name += " · " + ("Specials" if season == "0" else f"Season {season}")
+    return name
 
 
 def facet_counts(conn: sqlite3.Connection, q: Mapping[str, str]) -> dict[str, list[dict[str, Any]]]:

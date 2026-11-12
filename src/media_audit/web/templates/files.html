@@ -1,6 +1,55 @@
 {% extends "base.html" %}
 {% from "_macros.html" import sort_th, pager, video_summary, file_ref, facet, active_filters %}
 {% block title %}Files · media-audit{% endblock %}
+
+{% macro grouped_table(groups, params) %}
+<div class="table-wrap">
+<table class="data files groups">
+  <thead><tr>
+    {{ sort_th("Season" if groups.mode == "season" else "Title", "name", params, "asc") }}
+    {{ sort_th("Library", "library", params, "asc") }}
+    {{ sort_th("Matching", "count", params, "desc", "num") }}
+    {{ sort_th("Size", "size", params, "desc", "num") }}
+    <th>Video</th><th>Audio</th><th>Group</th>
+    <th class="actions-col"><span class="visually-hidden">Files</span></th>
+  </tr></thead>
+  <tbody>
+  {% for g in groups.rows %}
+  {% set season_label = none if g.season is none else ("Specials" if g.season == 0 else "Season " ~ g.season) %}
+  {% set drill = qs(params, by=None, page=None, sort=None, dir=None,
+                    title=(g.title_id if g.title_id is not none else "none"),
+                    season=(g.season if g.season is not none else none)) %}
+  <tr>
+    <td class="path">
+      <div class="ref">
+        <div class="ref-line"><span class="ref-name">
+          {%- if g.title_id %}<a href="/titles/{{ g.title_id }}{% if g.season is not none %}#season-{{ g.season }}{% endif %}">{{ g.title_name }}{% if g.title_year %} ({{ g.title_year }}){% endif %}</a>
+          {%- else %}<span class="muted">(no title)</span>{% endif -%}
+        </span></div>
+        {% if season_label %}<span class="ref-sub">{{ season_label }}</span>{% elif groups.mode == "season" and g.kind == "movie" %}<span class="ref-sub">Movie</span>{% endif %}
+      </div>
+    </td>
+    <td>{{ g.library }}</td>
+    <td class="num nowrap">
+      <span class="matching" title="{{ g.n }} of the {{ g.of }} files in this {{ 'season' if g.season is not none else 'title' }} match the filters">
+        <strong>{{ g.n | num }}</strong> of {{ g.of | num }}
+        <span class="meter" aria-hidden="true"><span style="width: {{ (100 * g.n / g.of) if g.of else 100 }}%"></span></span>
+      </span>
+    </td>
+    <td class="num nowrap">{{ g.bytes | bytes(1) }}</td>
+    <td>{{ g.resolutions | join(", ") }}{% if g.codecs %}<div class="muted small">{{ g.codecs | join(", ") }}</div>{% endif %}</td>
+    <td>{{ g.audio_languages | join(", ") }}</td>
+    <td>{{ g.release_groups[:3] | join(", ") }}{% if g.release_groups | length > 3 %} <span class="muted small">+{{ g.release_groups | length - 3 }}</span>{% endif %}</td>
+    <td class="actions-col"><a class="button small-button" href="/files{{ drill }}">Files →</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">No files match these filters.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{{ pager(groups, params) }}
+{% endmacro %}
 {% block content %}
 <div class="page-head">
   <h1>Files</h1>
@@ -31,6 +80,7 @@
     {% for f in facet_defs %}{{ facet(f, facets[f.key], params) }}{% endfor %}
   </div>
   {% if params.folder %}<input type="hidden" name="folder" value="{{ params.folder }}">{% endif %}
+  {% for key in ("by", "title", "season") %}{% if params.get(key) %}<input type="hidden" name="{{ key }}" value="{{ params.get(key) }}">{% endif %}{% endfor %}
   {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
   {% if params.dir %}<input type="hidden" name="dir" value="{{ params.dir }}">{% endif %}
   <noscript><button type="submit" class="button">Apply filters</button></noscript>
@@ -38,9 +88,22 @@
 
 <div id="results">
 <div class="result-head">
+  {% if groups %}
+  <p class="result-count"><strong>{{ groups.files | num }}</strong> file{{ "s" if groups.files != 1 }}
+    in {{ groups.total | num }} {{ ("season" if groups.mode == "season" else "title") ~ ("s" if groups.total != 1 else "") }}{% if groups.mode == "season" %} and movies{% endif %}
+    {%- if groups.mode == "season" %} ({{ groups.titles | num }} title{{ "s" if groups.titles != 1 }}){% endif %} · {{ groups.bytes | bytes }}</p>
+  {% else %}
   <p class="result-count"><strong>{{ page.total | num }}</strong> file{{ "s" if page.total != 1 }} · {{ page.total_bytes | bytes }}</p>
-  {{ active_filters(facet_defs, facets, params) }}
+  {% endif %}
+  <nav class="group-by" aria-label="Group by">
+    <span class="muted small">Group by</span>
+    {% for mode, label in [(none, "Files"), ("title", "Titles"), ("season", "Seasons")] %}
+    <a href="{{ qs(params, by=mode, page=None, sort=None, dir=None) }}" {% if params.get("by") == mode or (mode is none and not groups) %}aria-current="true"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  {{ active_filters(facet_defs, facets, params, scope) }}
 </div>
+{% if groups %}{{ grouped_table(groups, params) }}{% else %}
 <div class="table-wrap">
 <table class="data files">
   <thead><tr>
@@ -76,5 +139,6 @@
 </table>
 </div>
 {{ pager(page, params) }}
+{% endif %}
 </div>
 {% endblock %}
