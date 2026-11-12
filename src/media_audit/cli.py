@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from media_audit import __version__
 from media_audit import stats as stats_mod
+from media_audit.build import display_version
 from media_audit.config import (
     AUTO_INIT_ENV,
     CONFIG_ENV,
@@ -283,7 +283,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="media-audit", description="Scan a media library and report what's in it."
     )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {display_version()}")
     parser.add_argument("-c", "--config", type=Path, help="config file (default: "
                         "$MEDIA_AUDIT_CONFIG, ./config.yml, /config/config.yml)")  # fmt: skip
     parser.add_argument("--db", type=Path, help="override the database path")

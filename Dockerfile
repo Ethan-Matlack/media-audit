@@ -69,6 +69,14 @@ ENV PATH="/app/.venv/bin:${PATH}" \
 # Fail the build if the bundled libmediainfo can't load on this base image.
 RUN python -c "from pymediainfo import MediaInfo; assert MediaInfo.can_parse(), 'libmediainfo'"
 
+# Which build this is, stamped by CI: release | main | dev, and the git commit. Shown in
+# the start-up banner and the web UI footer (dev builds read e.g. "0.4.0-dev (abc1234)").
+# Declared late so a new commit only rebuilds the layers below.
+ARG BUILD_CHANNEL=""
+ARG BUILD_SHA=""
+ENV MEDIA_AUDIT_BUILD_CHANNEL=${BUILD_CHANNEL} \
+    MEDIA_AUDIT_BUILD_SHA=${BUILD_SHA}
+
 # The entrypoint starts as root, makes /config writable for PUID:PGID (Unraid creates
 # appdata folders owned by root), then drops to that user. With `--user` / compose
 # `user:` it runs as that user directly. On first start with no config.yml it writes

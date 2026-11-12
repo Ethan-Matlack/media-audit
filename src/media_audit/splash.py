@@ -7,7 +7,8 @@ import platform
 import socket
 from pathlib import Path
 
-from media_audit import __author__, __url__, __version__
+from media_audit import __author__, __url__
+from media_audit.build import build_label, display_version
 
 _WIDTH = 60
 
@@ -24,10 +25,13 @@ def container_name() -> str | None:
 
 def render() -> str:
     rows = [
-        ("Version", __version__),
+        ("Version", display_version()),
         ("Author", __author__),
         ("Project", __url__),
     ]
+    build = build_label()
+    if build:
+        rows.append(("Build", build))
     name = container_name()
     if name:
         rows.append(("Container", name))

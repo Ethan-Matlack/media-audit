@@ -24,7 +24,10 @@ CONFIG_ENV = "MEDIA_AUDIT_CONFIG"
 AUTO_INIT_ENV = "MEDIA_AUDIT_AUTO_INIT"  # Docker image: create a config on first start
 MEDIA_ROOT_ENV = "MEDIA_AUDIT_MEDIA_ROOT"  # where that first-start config looks for libraries
 # MEDIA_AUDIT_* variables that control the program rather than override config keys.
-NON_CONFIG_ENV = frozenset({CONFIG_ENV, AUTO_INIT_ENV, MEDIA_ROOT_ENV})
+NON_CONFIG_ENV = frozenset({
+    CONFIG_ENV, AUTO_INIT_ENV, MEDIA_ROOT_ENV,
+    "MEDIA_AUDIT_BUILD_CHANNEL", "MEDIA_AUDIT_BUILD_SHA",  # stamped by CI, see build.py
+})  # fmt: skip
 DEFAULT_CONFIG_PATHS = (Path("config.yml"), Path("/config/config.yml"))
 
 DEFAULT_IGNORE = [

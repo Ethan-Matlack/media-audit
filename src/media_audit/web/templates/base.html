@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}media-audit{% endblock %}</title>
-<link rel="stylesheet" href="/static/app.css?v={{ version }}">
+<link rel="stylesheet" href="/static/app.css?v={{ asset_tag }}">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-<script src="/static/app.js?v={{ version }}" defer></script>
+<script src="/static/app.js?v={{ asset_tag }}" defer></script>
 </head>
 <body data-page="{{ nav }}">
 <header class="topbar">
@@ -46,6 +46,6 @@
   {% endif %}
   {% block content %}{% endblock %}
 </main>
-<footer class="footer">media-audit {{ version }} · read-only: media files are never modified</footer>
+<footer class="footer">media-audit {{ version }}{% if build %} <span title="build channel and commit">({{ build }})</span>{% endif %} · read-only: media files are never modified</footer>
 </body>
 </html>

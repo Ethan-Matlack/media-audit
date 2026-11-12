@@ -33,6 +33,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from media_audit import __version__
+from media_audit.build import asset_tag, build_label, channel, display_version
 from media_audit.config import ConfigError
 from media_audit.db import connect, transaction, utcnow
 from media_audit.web import queries
@@ -209,7 +210,8 @@ def _env() -> Environment:
         episode=episode_code,
         audio_label=audio_label,
     )
-    env.globals.update(qs=query_string, version=__version__)
+    env.globals.update(qs=query_string, version=display_version(), asset_tag=asset_tag(),
+                       build=None if channel() == "dev" else build_label())  # fmt: skip
     return env
 
 
@@ -431,7 +433,7 @@ def create_app(service: ScanService) -> Starlette:
         return JSONResponse(service.status())
 
     async def healthz(request: Request) -> Response:
-        return JSONResponse({"ok": True, "version": __version__})
+        return JSONResponse({"ok": True, "version": __version__, "build": build_label()})
 
     static_dir = Path(str(resources.files("media_audit.web") / "static"))
     routes = [

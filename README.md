@@ -114,8 +114,9 @@ port. To use the published image instead of building, replace `build:` with
 - **Start-up banner:** each start prints a banner to the log with the version, author,
   container name and the user it runs as, so restarts are easy to spot.
 - **Health:** the image has a healthcheck on `/healthz`.
-- **Image tags:** `latest` follows `main`, `X.Y.Z` and `X.Y` come from release tags, and
-  `sha-<commit>` marks a specific build.
+- **Image tags:** `latest` follows `main`, `dev` follows the `dev` branch, `X.Y.Z` and
+  `X.Y` come from release tags, and `sha-<commit>` marks a specific build (see
+  [CI and releases](#ci-and-releases)).
 
 ## Quick start (local Python)
 
@@ -283,19 +284,45 @@ uv run mypy
 
 [.github/workflows/docker.yml](.github/workflows/docker.yml) builds the Docker test
 image and runs lint, mypy and the full test suite (with real MediaInfo and ffmpeg) on
-every pull request and push. On pushes to `main` and `v*` tags it then publishes the
-runtime image to GHCR using the built-in `GITHUB_TOKEN`.
+every pull request and push, then publishes the runtime image to GHCR using the
+built-in `GITHUB_TOKEN`:
+
+| Push to | Publishes | Shows as |
+|---|---|---|
+| `dev` branch | `:dev` and `:sha-<commit>` | `0.4.0-dev (abc1234)` |
+| `main` | `:latest` and `:sha-<commit>` | `0.4.0` |
+| tag `v0.4.0` | `:0.4.0` and `:0.4` | `0.4.0` |
+
+Pull requests run the tests but never publish. The version and build (channel and
+commit) appear in the start-up banner, the web UI footer and `/healthz`.
+
+**Workflow:** commit to `dev` day to day (every push updates `:dev`). Merge `dev` into
+`main` when it's ready, which updates `:latest`. Then release:
+
+1. Bump `__version__` in [src/media_audit/__init__.py](src/media_audit/__init__.py), the
+   one place the version lives (`pyproject.toml` reads it from there). Versions are
+   plain `X.Y.Z`: `X.Y.Z+1` for fixes, `X.Y+1.0` for features.
+2. Commit and push to `main`.
+3. `git tag v0.4.0 && git push origin v0.4.0`. CI refuses a tag that doesn't match
+   `__version__`.
 
 - **First publish:** the package starts out private. Make it public (GitHub →
   Packages → media-audit → Package settings → Change visibility) so Unraid can pull it
   without a login.
-- **Versions** are plain `X.Y.Z`, set in one place: `__version__` in
-  [src/media_audit/__init__.py](src/media_audit/__init__.py) (`pyproject.toml` reads it
-  from there). The version appears in the start-up banner in the container log and in
-  the web UI footer.
-- **Release:** bump `__version__`, commit, then `git tag v0.2.0 && git push origin v0.2.0`.
-  That publishes `:0.2.0` and `:0.2` (plus `:latest` from `main`). CI refuses a tag
-  that doesn't match `__version__`.
+- **Protect `main`** (GitHub → Settings → Branches → add a rule for `main`, require the
+  `test` status check) so a failing build can't reach `:latest`.
+
+#### Trying dev builds on Unraid
+
+Add a second container from the same template (Docker → Add Container → media-audit):
+
+- **Name** `media-audit-dev`, **Repository** `ghcr.io/ethan-matlack/media-audit:dev`.
+- **Web UI port:** another port, e.g. `8485`.
+- **Config:** its **own** folder, e.g. `/mnt/user/appdata/media-audit-dev`. Dev builds
+  may upgrade the database schema, and the `:latest` container then refuses to open
+  it. Copy `media-audit.db` from the main appdata folder to start with real data, or
+  let it do its own first scan.
+- **Media:** the same path as the main container (it's read-only).
 
 Rules are tested against 17 MediaInfo captures from a real library (DV, HDR10+,
 Atmos, DTS:X, remuxes, AVI, MP4, anime). At the default `parse_speed: 0`, files whose MKV

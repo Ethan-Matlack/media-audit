@@ -203,3 +203,34 @@ def test_mediainfo_raw_moves_out_of_files(tmp_path: Path) -> None:
     assert conn.execute("PRAGMA freelist_count").fetchone()[0] == 0  # compacted
     assert resources.files("media_audit.db.migrations").joinpath(
         "0003_split_mediainfo_raw.sql").is_file()  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("channel", "sha", "shown", "label"),
+    [(None, None, "{v}", None),
+     ("release", "abc1234def", "{v}", "release · abc1234"),
+     ("main", "abc1234def", "{v}", "main · abc1234"),
+     ("dev", "abc1234def", "{v}-dev (abc1234)", "dev · abc1234"),
+     ("dev", None, "{v}-dev", "dev")],
+)  # fmt: skip
+def test_build_labels(
+    monkeypatch: pytest.MonkeyPatch, channel: str | None, sha: str | None, shown: str,
+    label: str | None,
+) -> None:  # fmt: skip
+    from media_audit import __version__
+    from media_audit.build import CHANNEL_ENV, SHA_ENV, build_label, display_version
+
+    for env, value in ((CHANNEL_ENV, channel), (SHA_ENV, sha)):
+        if value is None:
+            monkeypatch.delenv(env, raising=False)
+        else:
+            monkeypatch.setenv(env, value)
+    assert display_version() == shown.format(v=__version__)
+    assert build_label() == label
+
+
+def test_build_env_is_not_config(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.yml"
+    cfg.write_text("libraries: []\n")
+    env = {"MEDIA_AUDIT_BUILD_CHANNEL": "dev", "MEDIA_AUDIT_BUILD_SHA": "abc"}
+    assert load_config(cfg, environ=env).libraries == []  # no "unknown key" error

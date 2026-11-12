@@ -1,8 +1,11 @@
 # Build, test and publish the Docker image to GitHub Container Registry.
 #
 #   pull request      -> test image only (lint, mypy, pytest with real MediaInfo + ffmpeg)
-#   push to main      -> test, then publish ghcr.io/<owner>/media-audit:latest and :sha-<short>
+#   push to dev       -> test, then publish :dev and :sha-<short>   (development builds)
+#   push to main      -> test, then publish :latest and :sha-<short>
 #   push tag v1.2.3   -> test, then publish :1.2.3 and :1.2
+#
+# Day to day: commit to `dev`; merge into `main` when it's ready for :latest; tag releases.
 #
 # Publishing uses the built-in GITHUB_TOKEN; no secrets to configure. After the first
 # publish, make the package public (GitHub -> Packages -> media-audit -> Package
@@ -11,7 +14,7 @@ name: docker
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -72,6 +75,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
@@ -84,5 +88,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_CHANNEL=${{ startsWith(github.ref, 'refs/tags/v') && 'release' || github.ref_name }}
+            BUILD_SHA=${{ github.sha }}
           cache-from: type=gha,scope=runtime
           cache-to: type=gha,mode=max,scope=runtime
