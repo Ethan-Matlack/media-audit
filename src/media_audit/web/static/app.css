@@ -102,6 +102,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.25rem 16px 2rem; }
   border-radius: var(--radius); padding: 0.7rem 1rem; margin-bottom: 1rem;
 }
 .notice-error { border-left-color: var(--bad); }
+.notice-warn { border-left-color: var(--warn); }
+.notice p { margin: 0.4rem 0 0; }
 
 /* ---------------------------------------------------------------- tiles */
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
@@ -235,7 +237,6 @@ table.issues td { vertical-align: top; }
 table.issues tr.ignored td { opacity: 0.55; }
 .actions-col { width: 1%; text-align: right; white-space: nowrap; }
 .small-btn { padding: 0.2rem 0.6rem; font-size: 0.8rem; font-weight: 600; }
-.file-list { margin: 0.25rem 0 0; padding-left: 1.1rem; }
 .tile.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .topbar nav .count { display: inline-block; min-width: 1.4em; padding: 0 0.35em; margin-left: 0.15rem;
   border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border);
@@ -245,6 +246,28 @@ table.issues tr.ignored td { opacity: 0.55; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* Files table: file name first, its folder underneath in muted text. */
-.file-name { font-weight: 500; }
-a.file-folder { display: block; margin-top: 0.1rem; font-size: 0.8rem; color: var(--text-3); }
-a.file-folder:hover { color: var(--accent-ink); }
+/* File references: name on top, the folder it's in underneath (see _macros.html). */
+.ref-line { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; }
+.ref-name { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.ref-aside { color: var(--text-2); font-size: 0.85rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+a.ref-folder { display: block; margin-top: 0.1rem; font-size: 0.8rem; color: var(--text-3); overflow-wrap: anywhere; }
+a.ref-folder:hover { color: var(--accent-ink); }
+.ref-list { list-style: none; margin: 0.2rem 0 0; padding: 0; }
+.ref-list li + li { margin-top: 0.2rem; }
+.ref-list + .ref-folder { margin-top: 0.2rem; }
+.ref-contents { margin: 0.2rem 0 0; padding-left: 1.1rem; font-size: 0.8rem; color: var(--text-3); }
+.where-title { display: block; font-weight: 600; margin-bottom: 0.15rem; }
+td.where { min-width: 14rem; }
+tr[id^="file-"] { scroll-margin-top: 30vh; }  /* clear of the sticky header, on phones too */
+tr:target > td { background: var(--surface-2); }
+tr:target > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* ---------------------------------------------------------------- cleanup scripts */
+.page-head .actions, .cleanup-form .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.cleanup-form label.check { display: flex; gap: 0.5rem; align-items: flex-start; margin-bottom: 0.75rem; }
+.cleanup-form label.check input { margin-top: 0.2rem; }
+.script-preview, pre.command {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.6rem 0.8rem; overflow-x: auto; white-space: pre; word-break: normal;
+}
+.script-preview { max-height: 32rem; font-size: 0.8rem; }

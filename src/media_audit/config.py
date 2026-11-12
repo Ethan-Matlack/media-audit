@@ -117,6 +117,44 @@ class WebConfig(_Model):
     port: int = Field(default=8484, ge=1, le=65535)
 
 
+class CleanupConfig(_Model):
+    """Cleanup scripts (Issues page). media-audit only writes the script; you run it."""
+
+    # Where the media folder is on the machine that runs the script, e.g. /mnt/user/media.
+    # Unset: the script uses the library paths exactly as media-audit sees them (right
+    # outside Docker; inside Docker the script will refuse to run until this is set).
+    host_media_path: str | None = None
+    # The same folder as media-audit sees it: the container side of the media mount.
+    media_mount: str = "/media"
+    # Where /config is on the host (e.g. /mnt/user/appdata/media-audit). Only used to show
+    # the command to run a saved script.
+    host_config_path: str | None = None
+
+    @field_validator("host_media_path", "host_config_path")
+    @classmethod
+    def _absolute(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return None
+        v = v.strip()
+        if not v.startswith("/"):
+            raise ValueError("must be an absolute path, like /mnt/user/media")
+        if not v.rstrip("/"):
+            raise ValueError("can't be the filesystem root")
+        return v.rstrip("/")
+
+    def host_root(self, library_path: str) -> str | None:
+        """A library folder as the host sees it; None if it isn't under media_mount."""
+        path = library_path.rstrip("/")
+        if self.host_media_path is None:
+            return path
+        mount = self.media_mount.rstrip("/")
+        if path == mount:
+            return self.host_media_path
+        if path.startswith(mount + "/"):
+            return self.host_media_path + path[len(mount) :]
+        return None
+
+
 class FlagsConfig(_Model):
     """The Issues checks (media_audit/rules/flags.py). Changes apply at the next scan or
     container start."""
@@ -148,6 +186,10 @@ class FlagsConfig(_Model):
     )  # fmt: skip
     """Non-video, non-subtitle files that are expected in a library (artwork, metadata).
     Anything else is reported as a stray file."""
+
+    strict_nfo: bool = True
+    """Report .nfo files media servers don't read (anything but tvshow.nfo, season.nfo,
+    movie.nfo or <video name>.nfo) as stray files: scene release info and leftovers."""
 
     @field_validator("allowed_extensions")
     @classmethod
@@ -188,6 +230,7 @@ class Config(_Model):
     web: WebConfig = Field(default_factory=WebConfig)
 
     flags: FlagsConfig = Field(default_factory=FlagsConfig)  # the Issues checks
+    cleanup: CleanupConfig = Field(default_factory=CleanupConfig)
 
     # Reserved for later phases; accepted now so configs written today keep working.
     naming: dict[str, Any] = Field(default_factory=dict)

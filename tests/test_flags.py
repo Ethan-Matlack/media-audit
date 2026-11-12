@@ -243,6 +243,8 @@ FOLDER_TV = {
     "Show {tvdb-2}/Season 1/folder.jpg": 20,
     "Show {tvdb-2}/Season 02/Show - S02E01 - C.mkv": 1000,
     "Show {tvdb-2}/Season 3/poster.jpg": 30,  # season folder with no videos
+    "Show {tvdb-2}/Season 4/Show - S04E01 - D.mkv": 1000,  # a real split: videos in both
+    "Show {tvdb-2}/Season 04/Show - S04E02 - E.mkv": 1000,
     "Show {tvdb-2}/tvshow.nfo": 5,
     "Gone Show/tvshow.nfo": 5,  # every video gone: one issue for the show, not per season
     "Gone Show/Season 01/episode.nfo": 5,
@@ -276,24 +278,25 @@ def test_folder_checks(folders: tuple[Any, Config, Path]) -> None:
     flags = _codes(conn)
     show_id = conn.execute("SELECT id FROM titles WHERE name = 'Show'").fetchone()[0]
 
-    split = {r["season_number"]: r for r in flags["split_season"]}
-    assert set(split) == {1, 2}
-    s1 = split[1]
-    assert s1["message"] == ("Season 1 is in 2 folders: Season 01 (2 episodes, 2 KB); "
-                             "Season 1 (no videos: jpg, nfo, 23 B)")  # fmt: skip
-    assert s1["bytes_recoverable"] == 23 and s1["title_id"] == show_id
-    assert "Season 2 (empty)" in split[2]["message"]
-    assert split[2]["bytes_recoverable"] is None
+    # Only a season with videos in more than one folder is "split".
+    (split,) = flags["split_season"]
+    assert split["season_number"] == 4 and split["title_id"] == show_id
+    assert split["message"] == ("Season 4 is in 2 folders: Season 04 (1 episode, 1 KB); "
+                                "Season 4 (1 episode, 1 KB)")  # fmt: skip
 
     no_video = {json.loads(r["data"])["folder"]: r["message"] for r in flags["no_video_folder"]}
     assert no_video == {
+        # A leftover with only junk beside the real season folder: a folder with no videos.
+        "Show {tvdb-2}/Season 1": "Season 1 folder with no videos: jpg, nfo, 23 B; "
+                                  "Season 01 has this season's videos",
         "Show {tvdb-2}/Season 3": "Season 3 folder with no videos: jpg, 30 B",
         "Gone Show": "Show folder with no videos: nfo ×2, 10 B",
         "Old Movie (1990)": "Movie folder with no videos: nfo, jpg, 44 B",
-    }
+    }  # fmt: skip
     empty = {json.loads(r["data"])["folder"]: r["message"] for r in flags["empty_folder"]}
-    # Season 2 is reported as part of the split season, not again as empty.
     assert empty == {
+        # An empty leftover beside the real season folder: an empty folder.
+        "Show {tvdb-2}/Season 2": "Empty folder; Season 02 has this season's videos",
         "Show {tvdb-2}/Season 01/Subs": "Empty folder",
         "Empty Show": "Empty show folder",
         "Blank (2000)": "Empty movie folder",
@@ -309,7 +312,10 @@ def test_folder_issues_clear_after_cleanup(folders: tuple[Any, Config, Path]) ->
     shutil.rmtree(tv / "Empty Show")
     run_scan(conn, cfg, analyzer=FakeAnalyzer({}))
     flags = _codes(conn)
-    assert "split_season" not in flags
+    assert [r["season_number"] for r in flags["split_season"]] == [4]  # still to merge
+    folders = {json.loads(r["data"])["folder"] for r in
+               flags["no_video_folder"] + flags["empty_folder"]}  # fmt: skip
+    assert not folders & {"Show {tvdb-2}/Season 1", "Show {tvdb-2}/Season 2"}
     assert "Empty Show" not in {json.loads(r["data"])["folder"] for r in flags["empty_folder"]}
 
 
@@ -319,7 +325,90 @@ def test_folder_issues_on_the_page(folders: tuple[Any, Config, Path], tmp_path: 
     cfg_file.write_text(f"database: {cfg.database}\nlibraries: []\nscan:\n  schedule: off\n")
     client = TestClient(create_app(ScanService(cfg_file)))
     page = client.get("/issues").text
-    assert "Seasons split across folders" in page and "Show {tvdb-2}/Season 1/" in page
+    split = page.split('id="check-split_season"')[1].split("</details>")[0]
+    assert "Season 4/" in split and "Season 04/" in split and "Season 2/" not in split
+    empty = page.split('id="check-empty_folder"')[1].split("</details>")[0]
+    assert "Season 2/" in empty and "Season 02 has this season&#39;s videos" in empty
     assert "Empty folders" in page and "Blank (2000)/" in page
     csv_text = client.get("/issues.csv").text
     assert "Old Movie (1990)/" in csv_text
+
+
+NFO_TV = {
+    "Show {tvdb-3}/tvshow.nfo": 5,  # metadata: fine
+    "Show {tvdb-3}/PRG ©.nfo": 9,  # scene release info
+    "Show {tvdb-3}/Show - S01E09.nfo": 4,  # its episode moved into Season 01
+    "Show {tvdb-3}/Season 01/season.nfo": 3,  # metadata: fine
+    "Show {tvdb-3}/Season 01/Show - S01E01 - A.mkv": 1000,
+    "Show {tvdb-3}/Season 01/Show - S01E01 - A.nfo": 3,  # matches its video: fine
+    "Show {tvdb-3}/Season 01/Show - S01E09 - I.mkv": 1000,
+    "Show {tvdb-3}/Show - S01E05 - E.mkv": 1000,  # loose next to season folders
+    "Show {tvdb-3}/Show - S01E05 - E.nfo": 3,  # matches the loose video: fine
+    "Show {tvdb-3}/Show - S02E01 - X.mkv": 1000,  # loose, and no Season 02 folder
+    "Show {tvdb-3}/Extras/Making of.nfo": 2,  # bonus material: fine
+    "Flat Show/Flat Show - S01E01.mkv": 900,  # no season folders at all: fine
+    "Flat Show/Flat Show - S01E02.mkv": 900,
+    "Gone Show/Season 02/Gone Show - S02E01.nfo": 2,  # in a folder with no videos
+    "Gone Show/Season 01/Gone Show - S01E01.mkv": 800,
+}
+NFO_MOVIES = {
+    "Heat (1995)/Heat (1995).mkv": 2000,
+    "Heat (1995)/movie.nfo": 3,
+    "Heat (1995)/heat.1995.1080p.bluray-grp.nfo": 6,  # release info
+}
+
+
+def test_nfo_and_loose_episode_checks(
+    make_tree: Callable[[str, dict[str, int | str]], Path], make_config: Callable[..., Config]
+) -> None:
+    cfg = make_config(tv=(make_tree("tv", dict(NFO_TV)), "tv"),
+                      movies=(make_tree("movies", dict(NFO_MOVIES)), "movies"))  # fmt: skip
+    conn = connect(cfg.database)
+    run_scan(conn, cfg, analyzer=FakeAnalyzer({}))
+    flags = _codes(conn)
+
+    def path(r: Any) -> str:
+        return str(conn.execute("SELECT rel_path FROM files WHERE id = ?",
+                                (r["file_id"],)).fetchone()[0])  # fmt: skip
+
+    strays = {path(r): r["message"] for r in flags["stray_file"]}
+    assert set(strays) == {"Show {tvdb-3}/PRG ©.nfo", "Show {tvdb-3}/Show - S01E09.nfo",
+                           "Heat (1995)/heat.1995.1080p.bluray-grp.nfo"}  # fmt: skip
+    assert strays["Show {tvdb-3}/PRG ©.nfo"].startswith("Not media-server metadata (.nfo)")
+    # Gone Show/Season 02 is reported as a folder with no videos, not file by file.
+    assert any("Season 02" in r["data"] for r in flags["no_video_folder"])
+
+    loose = {path(r): r["message"] for r in flags["episode_outside_season"]}
+    assert loose == {
+        "Show {tvdb-3}/Show - S01E05 - E.mkv":
+            "S01E05: In the show folder, not a season folder; Season 01 has the rest of "
+            "that season",
+        "Show {tvdb-3}/Show - S02E01 - X.mkv":
+            "S02E01: In the show folder, not a season folder; the show's other episodes are "
+            "in season folders",
+    }  # fmt: skip
+
+    cfg.flags.strict_nfo = False
+    assert not [f for f in collect(conn, cfg) if f.data and f.data.get("kind") == "nfo"]
+
+
+def test_issue_files_shown_like_the_files_page(client: TestClient) -> None:
+    import re
+
+    page = client.get("/issues?code=duplicate_episode").text
+    where = page.split('<td class="path where">')[1].split("</td>")[0]
+    # Each file: its name, linking to its row on the title page...
+    links = re.findall(r'href="/titles/(\d+)#file-(\d+)">([^<]+)</a>', where)
+    assert [name for _, _, name in links] == [
+        "Show (2010) - S01E02 - B [WEBDL-1080p].mkv",
+        "Show (2010) - S01E02 - B [HDTV-720p].mkv",
+    ]
+    # ...and the folder they share, once, relative to the title shown above it.
+    folders = re.findall(r'class="ref-folder" href="([^"]+)"[^>]*>([^<]+)</a>', where)
+    assert [label for _, label in folders] == ["Season 01/"]
+    assert "folder=Show+%282010%29+%7Btvdb-1%7D%2FSeason+01" in folders[0][0]
+
+    tid, fid, _ = links[0]
+    title = client.get(f"/titles/{tid}").text
+    assert f'id="file-{fid}"' in title
+    assert 'class="ref-folder"' in title  # the title page's issue list uses the same parts

@@ -114,6 +114,12 @@ def render(media_root: Path, database: Path, candidates: list[Candidate]) -> str
         "languages:",
         "  preferred_audio: [en]",
         "",
+        "# Cleanup scripts (Issues page): where /media and /config are on the host, so a",
+        "# script you run there finds your libraries. The Unraid template sets these.",
+        "# cleanup:",
+        "#   host_media_path: /mnt/user/media",
+        "#   host_config_path: /mnt/user/appdata/media-audit",
+        "",
     ]
     return "\n".join(lines)
 

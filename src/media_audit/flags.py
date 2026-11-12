@@ -147,7 +147,9 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
                                        f["library_id"], "Video with no audio track",
                                        f["title_id"], f["id"], f["season_number"]))  # fmt: skip
 
-    _folder_checks(conn, files, out)
+    reported = _folder_checks(conn, files, out)
+    if fc.strict_nfo and "nfo" in fc.allowed_extensions:
+        _stray_nfo(files, reported, out)
 
     # ---------------------------------------------------------------- duplicates
     episodes: dict[tuple[int, int, int], list[sqlite3.Row]] = defaultdict(list)
@@ -293,6 +295,27 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
             f"Season {f['season_number']}: missing {ranges(missing)} "
             f"({len(missing)} episode{'s' if len(missing) != 1 else ''})",
             f["title_id"], None, f["season_number"], {"missing": missing}))  # fmt: skip
+    season_dirs: dict[tuple[int, str], dict[int, str]] = defaultdict(dict)
+    for f in mains:
+        parts = f["rel_path"].split("/")
+        if f["kind"] == "show" and len(parts) >= 3:
+            n = season_folder_number(parts[1])
+            if n is not None:
+                season_dirs[(f["library_id"], parts[0])].setdefault(n, parts[1])
+    for f in mains:
+        parts = f["rel_path"].split("/")
+        if f["kind"] != "show" or len(parts) != 2 or f["title_id"] is None:
+            continue
+        dirs = season_dirs.get((f["library_id"], parts[0]))
+        if not dirs:
+            continue  # no season folders at all: a flat layout, which is fine
+        n = f["season_number"]
+        where = (f"{dirs[n]} has the rest of that season" if n in dirs
+                 else "the show's other episodes are in season folders")  # fmt: skip
+        out.add(f["library"], Flag(
+            "episode_outside_season", f"episode_outside_season:{f['id']}", _fp(f),
+            f["library_id"], f"{_episode_label(f)}In the show folder, not a season folder; "
+            f"{where}", f["title_id"], f["id"], n))  # fmt: skip
     for t in titles:
         if not (t["tmdb_id"] or t["imdb_id"] or t["tvdb_id"]):
             out.add(t["library"], Flag(
@@ -352,8 +375,13 @@ def _folder_summary(rows: list[sqlite3.Row], show: bool) -> str:
     return f"no videos: {kinds}, {size}"
 
 
-def _folder_checks(conn: sqlite3.Connection, files: list[sqlite3.Row], out: _Collector) -> None:
+def _folder_checks(
+    conn: sqlite3.Connection, files: list[sqlite3.Row], out: _Collector
+) -> dict[int, list[str]]:
     """Leftover folders: seasons split across folders, folders without videos, empty ones.
+
+    Returns the folders reported as having no videos (library id -> folders), so their
+    files aren't reported again one by one.
 
     Folders are relative to the library root: ``Show`` (a title folder) and
     ``Show/Season 01`` (a season folder, in shows only).
@@ -395,10 +423,12 @@ def _folder_checks(conn: sqlite3.Connection, files: list[sqlite3.Row], out: _Col
 
     # A title folder with no videos at all is reported once, not again per season.
     videoless: set[tuple[int, str]] = set()
+    reported: dict[int, list[str]] = defaultdict(list)
     for (lib_id, top), rows in sorted(tops.items()):
         if any(r["is_video"] for r in rows):
             continue
         videoless.add((lib_id, top))
+        reported[lib_id].append(top)
         lib = libs[lib_id]
         out.add(lib["name"], Flag(
             "no_video_folder", f"no_video_folder:{lib['name']}:{top}",
@@ -409,43 +439,50 @@ def _folder_checks(conn: sqlite3.Connection, files: list[sqlite3.Row], out: _Col
             data={"folder": top, "files": [{"path": r["rel_path"], "size": r["size_bytes"]}
                                            for r in rows[:20]]}))  # fmt: skip
 
-    split: set[tuple[int, str]] = set()  # season folders already reported as split
+    # A season in several folders is only "split" when more than one of them has videos.
+    # A leftover beside the real folder (empty, or only junk) is reported on its own as an
+    # empty folder / folder with no videos, noting which folder has the season's videos.
+    twin_note: dict[tuple[int, str], str] = {}  # empty leftover -> note for its message
     for (lib_id, top, n), folders in sorted(seasons.items()):
         if (lib_id, top) in videoless:
             continue
         lib = libs[lib_id]
-        names = sorted(folders, key=lambda d: (-len(folders[d]), d))
-        if len(folders) > 1:
-            split.update((lib_id, f"{top}/{d}") for d in names)
-            with_videos = [d for d in names if any(r["is_video"] for r in folders[d])]
-            spare = sum(r["size_bytes"] for d in names if d not in with_videos
-                        for r in folders[d]) if with_videos else 0  # fmt: skip
-            listing = "; ".join(f"{d} ({_folder_summary(folders[d], True)})" for d in names)
+        with_videos = sorted((d for d in folders if any(r["is_video"] for r in folders[d])),
+                             key=lambda d: (-len(folders[d]), d))  # fmt: skip
+        if len(with_videos) > 1:
+            listing = "; ".join(f"{d} ({_folder_summary(folders[d], True)})" for d in with_videos)
             out.add(lib["name"], Flag(
                 "split_season", f"split_season:{lib['name']}:{top}:S{n}",
                 ",".join(f"{d}:{len(folders[d])}:{sum(r['size_bytes'] for r in folders[d])}"
-                         for d in sorted(names)), lib_id,
-                f"{_season_name(n)} is in {len(names)} folders: {listing}",
+                         for d in sorted(with_videos)), lib_id,
+                f"{_season_name(n)} is in {len(with_videos)} folders: {listing}",
                 title_ids.get((lib_id, top)), None, n,
                 {"folders": [{"path": f"{top}/{d}",
-                              "summary": _folder_summary(folders[d], True)} for d in names]},
-                spare or None))  # fmt: skip
-            continue
-        (name,) = names
-        rows = folders[name]
-        if rows and not any(r["is_video"] for r in rows):
+                              "summary": _folder_summary(folders[d], True)}
+                             for d in with_videos]}))  # fmt: skip
+        note = ""
+        if with_videos and len(folders) > len(with_videos):
+            verb = "has" if len(with_videos) == 1 else "have"
+            note = f"; {' and '.join(with_videos)} {verb} this season's videos"
+        for name in sorted(folders):
+            rows = folders[name]
+            if name in with_videos:
+                continue
+            path = f"{top}/{name}"
+            if not rows:  # empty: reported with the other empty folders below
+                twin_note[(lib_id, path)] = note
+                continue
+            reported[lib_id].append(path)
             out.add(lib["name"], Flag(
-                "no_video_folder", f"no_video_folder:{lib['name']}:{top}/{name}",
+                "no_video_folder", f"no_video_folder:{lib['name']}:{path}",
                 ",".join(sorted(_fp(r) for r in rows)), lib_id,
-                f"{_season_name(n)} folder with {_folder_summary(rows, True)}",
+                f"{_season_name(n)} folder with {_folder_summary(rows, True)}{note}",
                 title_ids.get((lib_id, top)), None, n,
-                {"folder": f"{top}/{name}",
+                {"folder": path,
                  "files": [{"path": r["rel_path"], "size": r["size_bytes"]}
                            for r in rows[:20]]}))  # fmt: skip
 
     for lib_id, rel in empties:
-        if (lib_id, rel) in split:
-            continue
         lib = libs[lib_id]
         top = rel.split("/")[0]
         what = (
@@ -453,9 +490,41 @@ def _folder_checks(conn: sqlite3.Connection, files: list[sqlite3.Row], out: _Col
             if "/" not in rel
             else "Empty folder"
         )
+        what += twin_note.get((lib_id, rel), "")
         out.add(lib["name"], Flag(
             "empty_folder", f"empty_folder:{lib['name']}:{rel}", "", lib_id, what,
             title_ids.get((lib_id, top)), data={"folder": rel}))  # fmt: skip
+    return reported
+
+
+# .nfo files media servers read: these names, or the name of a video next to them.
+_METADATA_NFO = frozenset({"tvshow", "season", "movie"})
+
+
+def _stray_nfo(files: list[sqlite3.Row], reported: dict[int, list[str]], out: _Collector) -> None:
+    """.nfo files that aren't media-server metadata: scene release info, or the metadata
+    of a video that has since moved or been renamed."""
+    stems: dict[tuple[int, str], set[str]] = defaultdict(set)
+    for f in files:
+        if f["is_video"]:
+            folder, _, name = f["rel_path"].rpartition("/")
+            stems[(f["library_id"], folder)].add(name.rsplit(".", 1)[0].casefold())
+    for f in files:
+        if (f["ext"] or "").lower() != "nfo" or _in_extras_folder(f["rel_path"]):
+            continue
+        folder, _, name = f["rel_path"].rpartition("/")
+        stem = name[: -len(".nfo")].casefold()
+        if stem in _METADATA_NFO or stem in stems.get((f["library_id"], folder), ()):
+            continue
+        if any(
+            folder == d or folder.startswith(d + "/") for d in reported.get(f["library_id"], [])
+        ):
+            continue  # already listed as a folder with no videos left
+        out.add(f["library"], Flag(
+            "stray_file", f"stray_file:{f['id']}", _fp(f), f["library_id"],
+            "Not media-server metadata (.nfo): release info, or left over from a moved or "
+            f"renamed video, {_size(f['size_bytes'])}", f["title_id"], f["id"],
+            f["season_number"], {"kind": "nfo"}))  # fmt: skip
 
 
 def _in_extras_folder(rel_path: str) -> bool:

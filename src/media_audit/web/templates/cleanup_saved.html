@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Cleanup script saved · media-audit{% endblock %}
+{% block content %}
+<p class="small"><a href="/issues">← Issues</a></p>
+<div class="page-head"><h1>Cleanup script saved</h1></div>
+
+<section class="card">
+  <p>Saved as <code>{{ name }}</code>{% if in_docker %} in the container's <code>{{ path.rsplit("/", 1)[0] }}/</code>{% endif %}.
+    Nothing has been changed. The script only does something when you run it.</p>
+  {% set run = host_path or ("/mnt/user/appdata/media-audit/cleanup/" ~ name) %}
+  {% if not host_path %}
+  <p class="small muted">The path below assumes your appdata folder is <code>/mnt/user/appdata/media-audit</code>.
+    Set <code>cleanup.host_config_path</code> so this page shows the real one.</p>
+  {% endif %}
+  <h2>1. Dry run (changes nothing)</h2>
+  <p class="small">In the server's terminal (on Unraid: the <strong>&gt;_</strong> icon at the top right):</p>
+  <pre class="command">bash {{ run | shell_quote }}</pre>
+  <p class="small">Read the list. Lines marked <em>skip</em> changed since the scan and will be left alone.</p>
+  <h2>2. Apply</h2>
+  <pre class="command">bash {{ run | shell_quote }} --apply</pre>
+  <p class="small">It shows the warning again and asks you to type <code>apply</code>. Files go to
+    <code>.media-audit-quarantine/</code> inside each library folder; a log and a restore script are
+    written next to the script.</p>
+  <h2>3. Rescan</h2>
+  <p class="small">Run a scan here so the issues clear. Once you've checked your media server, delete the
+    quarantine folders yourself.</p>
+  <p><a class="button" href="/issues/cleanup/saved/{{ name }}">Download a copy</a></p>
+</section>
+{% endblock %}

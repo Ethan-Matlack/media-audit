@@ -67,6 +67,19 @@ flags:
   movie_bitrate_low: 0.25 # movie GB/h below 25% of the median for its resolution
   # Non-video, non-subtitle files expected in a library; anything else is a "stray file".
   allowed_extensions: [nfo, jpg, jpeg, png, webp, gif, tbn, bif, xml, json, sfv, md5]
+  # .nfo files count only if media servers read them (tvshow/season/movie.nfo, or named
+  # after a video next to them); others (scene release info, leftovers) are stray files.
+  strict_nfo: true
+
+# Cleanup scripts (Issues page -> Cleanup script). media-audit only writes the script; you
+# review it and run it on the host. These tell the script where things are on the host.
+cleanup:
+  # Where media-audit's media_mount folder is on the host. Leave unset outside Docker
+  # (the library paths are already right); in Docker the script refuses to run without it.
+  # host_media_path: /mnt/user/media
+  media_mount: /media
+  # Where /config is on the host. Only used to show the command for a saved script.
+  # host_config_path: /mnt/user/appdata/media-audit
 
 # Reserved for later phases (naming rules, Radarr/Sonarr integrations).
 naming: {}

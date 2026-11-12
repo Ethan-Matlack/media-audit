@@ -607,6 +607,7 @@ _ISSUE_SELECT = """
     SELECT fl.id, fl.code, fl.severity, fl.key, fl.title_id, fl.file_id, fl.season_number,
            fl.message, fl.data, fl.bytes_recoverable, l.name AS library,
            t.name AS title_name, t.year AS title_year, t.kind AS title_kind,
+           t.folder_path AS title_path, l.path AS library_path,
            f.rel_path AS file_path, f.size_bytes AS file_size,
            (ig.key IS NOT NULL) AS ignored
     FROM flags fl
@@ -620,6 +621,9 @@ _ISSUE_SELECT = """
 def _issue_row(r: sqlite3.Row) -> dict[str, Any]:
     row = dict(r)
     row["data"] = json.loads(row["data"]) if row["data"] else None
+    # The title's folder relative to the library, so paths can be shown relative to it.
+    root, title = (row.pop("library_path") or "").rstrip("/"), row.pop("title_path") or ""
+    row["title_folder"] = title[len(root) + 1 :] if root and title.startswith(root + "/") else None
     return row
 
 

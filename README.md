@@ -210,10 +210,10 @@ check, errors first; the nav shows how many errors and warnings are open.
 | `unreadable` | error | MediaInfo couldn't read a video stream: damaged, incomplete, or not video |
 | `disc_image` | error | `.iso`/`.img` instead of a video file |
 | `no_audio` | warning | video with no audio track |
-| `stray_file` | warning | not video, subtitles, artwork or metadata (partial downloads, `.txt`, `.dat`...); extras folders are exempt |
+| `stray_file` | warning | not video, subtitles, artwork or metadata (partial downloads, `.txt`, `.dat`...), or an `.nfo` media servers don't read (scene release info, or left over from a moved video); extras folders are exempt |
 | `no_video_folder` | warning | movie, show or season folder with only artwork, metadata or other leftovers |
 | `empty_folder` | warning | folder with nothing in it (files matched by `scan.ignore` don't count) |
-| `split_season` | warning | one season in two folders, e.g. `Season 1` and `Season 01`, or `Specials` and `Season 00` |
+| `split_season` | warning | one season's episodes in two folders, e.g. `Season 1` and `Season 01`, or `Specials` and `Season 00`; an empty or video-less leftover is reported as an empty folder / folder with no videos instead |
 | `duplicate_episode` | warning | one episode stored as several files; shows the space freed by keeping the largest |
 | `orphan_subtitle` | warning | subtitle file with no video of the same name |
 | `multi_version_movie` | info | several versions of one movie (often deliberate) |
@@ -223,6 +223,7 @@ check, errors first; the nav shows how many errors and warnings are open.
 | `bitrate_outlier` | info | GB/hour far from the rest of the season, or from movies at the same resolution |
 | `unnumbered_episode` | warning | no episode number in the filename |
 | `missing_episodes` | info | gaps in episode numbering within a season |
+| `episode_outside_season` | info | episode directly in the show folder while the rest are in season folders (flat layouts aren't flagged) |
 | `no_ids` | info | no `{tmdb-…}`/`{tvdb-…}`/`{imdb-…}` in folder or file names |
 | `mixed_resolution_season` | info | one season at several resolutions |
 | `legacy_codec` | info | Xvid/DivX, MPEG-2, MPEG-1 or VC-1: upgrade candidates |
@@ -240,6 +241,43 @@ are kept in the database and survive rescans and `rederive`. **Show ignored** li
 
 Thresholds, allowed file types and which checks run (globally or per library) are set
 under `flags:` in [config.example.yml](config.example.yml).
+
+### Cleanup scripts
+
+media-audit never changes your media; in Docker it can't, because `/media` is mounted
+read-only. For the leftovers that need no judgement, it can instead **write a script
+that you review and run yourself** on the server: **Issues → Cleanup script…**.
+
+The script is built from the issues currently shown (the Issues page filters apply;
+ignored issues are always left out):
+
+| Issue | With `--apply` |
+|---|---|
+| Folders with no videos left | files move to quarantine, then the empty folder is removed |
+| Stray files, subtitles with no matching video | move to quarantine |
+| Empty folders, including a leftover `Season 1` next to `Season 01` | removed if still empty |
+
+Duplicates, unreadable files and the other checks need a decision and aren't scripted.
+
+* **Nothing is deleted.** Files move to `.media-audit-quarantine/<date-time>/` inside
+  their library folder, keeping their folder structure (same filesystem, so it's
+  instant). Scans skip that folder. A `*-restore.sh` script is written as files move.
+  Delete the quarantine yourself once you've checked your media server.
+* **Dry run by default.** `bash cleanup-….sh` only lists what it would do; `--apply`
+  does it, after showing the warning again and asking you to type `apply`.
+* **Checked again at run time.** Each file must still have the size and modification
+  time it had at the scan; folders must have no videos in them and be truly empty
+  before they're removed; paths must resolve inside their library folder (symlinks
+  aren't followed). Anything else is skipped and listed.
+* **Save to appdata** (the default) writes the script to `/config/cleanup/`, i.e.
+  `/mnt/user/appdata/media-audit/cleanup/` on Unraid, and shows the commands to run.
+  **Download** gives you the same file. A log is written next to the script.
+
+The script runs on the host, which sees different paths than the container, so set
+`cleanup.host_media_path` to the host folder mounted at `/media`. On Unraid that's the
+**Host media path** variable: the same folder as **Media**. Until it's set, the page
+won't create a script. It needs bash and GNU coreutils/findutils (Unraid and any
+Linux server have them).
 
 ## Exploring the data
 
@@ -267,6 +305,7 @@ src/media_audit/
   init_config.py       starter config from a media folder (first start / init-config)
   cron.py              cron expressions for scheduled scans
   flags.py             runs the Issues checks after each scan (rules/flags.py: the checks)
+  cleanup.py           cleanup scripts for Issues (generated text; never run by media-audit)
   web/                 `serve`: scan service + scheduler, Starlette app, Jinja templates,
                        static CSS/JS (no build step, no CDN)
 scripts/               fixture capture/generation, demo library
@@ -336,7 +375,18 @@ isn't missed. See
 
 ## License
 
-MIT. Runtime dependencies: pymediainfo (MIT) with bundled libmediainfo (BSD-2-Clause),
-PyYAML (MIT), pydantic (MIT), Starlette (BSD-3-Clause), uvicorn (BSD-3-Clause), Jinja2
-(BSD-3-Clause), and their dependencies (anyio, h11, click, idna, MarkupSafe,
-typing-extensions: MIT, BSD or PSF licensed).
+Copyright (C) 2026 Ethan Matlack
+
+media-audit is free software: you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version. It is distributed in
+the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE)
+for the full text.
+
+Releases up to and including 0.4.0 were published under the MIT license.
+
+Runtime dependencies, all GPL-compatible: pymediainfo (MIT) with bundled libmediainfo
+(BSD-2-Clause), PyYAML (MIT), pydantic (MIT), Starlette (BSD-3-Clause), uvicorn
+(BSD-3-Clause), Jinja2 (BSD-3-Clause), and their dependencies (anyio, h11, click, idna,
+MarkupSafe, typing-extensions: MIT, BSD or PSF licensed).

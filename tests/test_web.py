@@ -217,9 +217,9 @@ def test_files_filters_and_csv(client: TestClient) -> None:
 def test_files_folder_link_lists_the_whole_folder(client: TestClient) -> None:
     page = client.get("/files?q=Heat").text
     # The grey folder line links to every file in that folder, not to the title.
-    href = page.split('class="file-folder" href="')[1].split('"')[0].replace("&amp;", "&")
+    href = page.split('class="ref-folder" href="')[1].split('"')[0].replace("&amp;", "&")
     assert "folder=Heat+%281995%29" in href and "role=all" in href and "q=" not in href
-    folder = client.get("/files" + href).text
+    folder = client.get(href).text
     assert "3 files" in folder and "Heat (1995).en.srt" in folder and "Alien" not in folder
     assert "all folders" in folder
     # Matched as a prefix, so subfolders count and a partial folder name doesn't.

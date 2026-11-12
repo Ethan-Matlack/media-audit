@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import shlex
 import sqlite3
 import threading
 from collections.abc import Iterator, Mapping
@@ -15,13 +16,14 @@ from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import (
+    FileResponse,
     HTMLResponse,
     JSONResponse,
     PlainTextResponse,
@@ -32,7 +34,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from media_audit import __version__
+from media_audit import __version__, cleanup
 from media_audit.build import asset_tag, build_label, channel, display_version
 from media_audit.config import ConfigError
 from media_audit.db import connect, transaction, utcnow
@@ -126,6 +128,28 @@ def query_string(params: Mapping[str, str], **changes: Any) -> str:
     return ("?" + urlencode(merged)) if merged else "?"
 
 
+def parent_folder(path: str) -> str:
+    """'Show/Season 01/ep.mkv' -> 'Show/Season 01' ('' for a file in the library root)."""
+    return path.rstrip("/").rpartition("/")[0]
+
+
+def rel_folder(folder: str, base: str | None) -> str:
+    """A folder as shown under a title: relative to the title folder when it's inside it.
+
+    The title folder itself is shown as is, so a file directly in it still says where.
+    """
+    if base and folder.startswith(base + "/"):
+        return folder[len(base) + 1 :]
+    return folder
+
+
+def folder_url(library: str, folder: str, **extra: Any) -> str:
+    """The Files page listing everything in one folder (and below it)."""
+    params = {"library": library, "folder": folder, "role": "all"}
+    params.update({k: str(v) for k, v in extra.items() if v})
+    return "/files?" + urlencode(params)
+
+
 def _distinct_labels(values: list[float]) -> tuple[list[str], int]:
     """Byte labels with just enough decimals that neighbouring values differ."""
     for digits in range(1, 5):
@@ -209,8 +233,11 @@ def _env() -> Environment:
         bitrate=bitrate,
         episode=episode_code,
         audio_label=audio_label,
+        shell_quote=shlex.quote,
+        parent_folder=parent_folder,
     )
-    env.globals.update(qs=query_string, version=display_version(), asset_tag=asset_tag(),
+    env.globals.update(qs=query_string, folder_url=folder_url, rel_folder=rel_folder,
+                       version=display_version(), asset_tag=asset_tag(),
                        build=None if channel() == "dev" else build_label())  # fmt: skip
     return env
 
@@ -396,6 +423,93 @@ def create_app(service: ScanService) -> Starlette:
             },
         )
 
+    # ------------------------------------------------------------------ cleanup scripts
+    cleanup_filters = ("library", "severity", "category", "code")
+
+    def _cleanup_context(request: Request, conn: sqlite3.Connection) -> dict[str, Any]:
+        cfg = service.config()
+        filters = {k: v for k, v in request.query_params.items() if k in cleanup_filters and v}
+        where, params = queries._issue_filters({**filters, "ignored": "1"})
+        plan = cleanup.build_plan(conn, cfg, where, params)
+        in_docker = cleanup.in_docker()
+        return {
+            "cfg": cfg, "plan": plan, "filters": filters, "in_docker": in_docker,
+            "needs_host_path": in_docker and cfg.cleanup.host_media_path is None,
+            "saved": cleanup.saved_scripts(cleanup.scripts_dir(cfg)),
+            "disclaimer": cleanup.DISCLAIMER,
+        }  # fmt: skip
+
+    def _host_script_path(cfg: Any, in_docker: bool, name: str) -> str | None:
+        path = cleanup.scripts_dir(cfg) / name
+        if not in_docker:
+            return str(path)
+        host = cfg.cleanup.host_config_path
+        try:
+            return f"{host}/{path.relative_to('/config')}" if host else None
+        except ValueError:
+            return None
+
+    def cleanup_page(request: Request, conn: sqlite3.Connection, **extra: Any) -> Response:
+        try:
+            ctx = _cleanup_context(request, conn)
+        except ConfigError:
+            return render(request, "cleanup.html", _conn=conn, plan=None)
+        text = cleanup.render_script(ctx["plan"], datetime.now())
+        return render(request, "cleanup.html", _conn=conn, script=text, **ctx, **extra)
+
+    def _cleanup_post(request: Request, form: dict[str, str]) -> Response:
+        with db.connection(db_path()) as conn:
+            if conn is None:
+                return PlainTextResponse("no database yet", status_code=404)
+            try:
+                ctx = _cleanup_context(request, conn)
+            except ConfigError:
+                return cleanup_page(request, conn)
+            plan = ctx["plan"]
+            if plan.empty or ctx["needs_host_path"]:
+                return cleanup_page(request, conn)
+            if form.get("digest") != plan.digest:
+                return cleanup_page(request, conn, changed=True)
+            if form.get("ack") != "1":
+                return cleanup_page(request, conn, need_ack=True)
+            now = datetime.now()
+            name = cleanup.script_name(now)
+            text = cleanup.render_script(plan, now)
+            if form.get("action") == "download":
+                return Response(text, media_type="text/x-shellscript; charset=utf-8",
+                                headers={"Content-Disposition":
+                                         f'attachment; filename="{name}"'})  # fmt: skip
+            try:
+                path = cleanup.save_script(text, cleanup.scripts_dir(ctx["cfg"]), name)
+            except OSError as exc:
+                return cleanup_page(request, conn, save_error=str(exc))
+            log.info("cleanup script saved: %s", path)
+            return render(request, "cleanup_saved.html", _conn=conn, name=name,
+                          path=str(path), plan=plan,
+                          host_path=_host_script_path(ctx["cfg"], ctx["in_docker"], name),
+                          in_docker=ctx["in_docker"])  # fmt: skip
+
+    async def cleanup_post(request: Request) -> Response:
+        if not _same_origin(request):
+            return PlainTextResponse("cross-origin request refused", status_code=403)
+        body = (await request.body()).decode("utf-8", "replace")
+        form = {k: v[-1] for k, v in parse_qs(body).items()}
+        return await run_in_threadpool(_cleanup_post, request, form)
+
+    async def cleanup_saved(request: Request) -> Response:
+        import re
+
+        name = request.path_params["name"]
+        try:
+            directory = cleanup.scripts_dir(service.config())
+        except ConfigError:
+            return PlainTextResponse("config problem", status_code=503)
+        path = directory / name
+        if not re.fullmatch(cleanup.SCRIPT_RE, name) or not path.is_file():
+            return PlainTextResponse("not found", status_code=404)
+        return FileResponse(path, media_type="text/x-shellscript; charset=utf-8",
+                            filename=name)  # fmt: skip
+
     def _scans(request: Request) -> Response:
         with db.connection(db_path()) as conn:
             history = db.cached(("scans",), lambda: queries.scans(conn)) if conn else []
@@ -446,6 +560,9 @@ def create_app(service: ScanService) -> Starlette:
         Route("/issues.csv", issues_csv),
         Route("/issues/ignore", _ignore_endpoint(True), methods=["POST"]),
         Route("/issues/unignore", _ignore_endpoint(False), methods=["POST"]),
+        Route("/issues/cleanup", with_db(cleanup_page)),
+        Route("/issues/cleanup", cleanup_post, methods=["POST"]),
+        Route("/issues/cleanup/saved/{name}", cleanup_saved),
         Route("/scans", scans),
         Route("/scans/run", scan_now, methods=["POST"]),
         Route("/scans/stop", scan_stop, methods=["POST"]),

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Cleanup script · media-audit{% endblock %}
+{% block content %}
+<p class="small"><a href="/issues{{ qs(filters or {}) }}">← Issues</a></p>
+<div class="page-head"><h1>Cleanup script</h1></div>
+
+{% if plan is none %}
+<div class="notice notice-error">Fix the config problem above first.</div>
+{% else %}
+
+<div class="notice notice-warn" role="note">
+  <strong>Read this before you use a cleanup script.</strong>
+  <p>{{ disclaimer }}</p>
+</div>
+
+{% if changed %}<div class="notice notice-error" role="alert">The issues changed since this page was opened (a scan probably finished). Check the script below again before saving it.</div>{% endif %}
+{% if need_ack %}<div class="notice notice-error" role="alert">Tick the box to confirm you've read the warning.</div>{% endif %}
+{% if save_error %}<div class="notice notice-error" role="alert">Couldn't save the script: <code>{{ save_error }}</code></div>{% endif %}
+{% if needs_host_path %}
+<div class="notice notice-error" role="alert">
+  <strong>Set where your media is on the host first.</strong> media-audit sees your media at
+  <code>{{ cfg.cleanup.media_mount }}</code>, but the script runs on the server, where that folder has a
+  different path. Set <code>cleanup.host_media_path</code> in <code>{{ config_path }}</code>
+  (for example <code>/mnt/user/media</code>, the same as the container's Media path), or the
+  <code>MEDIA_AUDIT_CLEANUP__HOST_MEDIA_PATH</code> variable. No restart needed.
+</div>
+{% endif %}
+{% if plan.unmapped %}
+<div class="notice notice-error">Left out: {{ plan.unmapped | join(", ") }}. Their folders aren't under <code>{{ cfg.cleanup.media_mount }}</code>, so their path on the host is unknown.</div>
+{% endif %}
+
+<section class="card">
+  <h2>What's in it</h2>
+  <p class="small muted">
+    {% if filters %}Issues matching the filter on the Issues page ({% for k, v in filters.items() %}{{ k }}: {{ v }}{{ ", " if not loop.last }}{% endfor %}).{% else %}All open issues of the kinds below.{% endif %}
+    Ignored issues are never included.
+  </p>
+  {% if plan.empty %}
+  <p>Nothing to clean up in this selection.</p>
+  {% else %}
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Issue</th><th class="num">Count</th><th>With --apply</th></tr></thead>
+    <tbody>
+    {% for s in plan.sections if s.lines %}
+      <tr><td>{{ s.heading }}</td>
+        <td class="num nowrap">{% if s.key == "junk" %}{{ s.folders }} folder{{ "s" if s.folders != 1 }} · {{ s.files }} file{{ "s" if s.files != 1 }}{% else %}{{ s.count }}{% endif %}</td>
+        <td>{{ s.action }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  <p class="small muted">This includes leftovers from renames, like an old <code>Season 1</code> folder next to
+    <code>Season 01</code>, when it's empty or has no videos. Duplicates, unreadable files, seasons with episodes
+    in two folders and the other checks need a decision, so they aren't scripted.</p>
+</section>
+
+{% if not plan.empty %}
+<section class="card">
+  <h2>Get the script</h2>
+  <form method="post" action="/issues/cleanup{{ qs(filters) if filters else '' }}" class="cleanup-form">
+    <input type="hidden" name="digest" value="{{ plan.digest }}">
+    <label class="check"><input type="checkbox" name="ack" value="1" required {% if needs_host_path %}disabled{% endif %}>
+      I've read the warning above. I'll review the script and run it myself, at my own risk.</label>
+    <div class="actions">
+      <button type="submit" name="action" value="save" class="button primary" {% if needs_host_path %}disabled{% endif %}>Save to appdata</button>
+      <button type="submit" name="action" value="download" class="button" {% if needs_host_path %}disabled{% endif %}>Download</button>
+    </div>
+    <p class="small muted">Save writes it to <code>cleanup/</code> in media-audit's config folder (your appdata), so you can run it
+      straight from the server's terminal. Nothing runs until you do.</p>
+  </form>
+</section>
+
+<details class="card" open>
+  <summary><h2>Script preview</h2></summary>
+  <p class="small muted">The saved or downloaded script is exactly this, with the time it was created.</p>
+  <pre class="script-preview">{{ script }}</pre>
+</details>
+{% endif %}
+
+{% if saved %}
+<section class="card">
+  <h2>Saved scripts</h2>
+  <ul class="plain small">
+  {% for s in saved %}
+    <li><a href="/issues/cleanup/saved/{{ s.name }}">{{ s.name }}</a>
+      {% if s.applied %}<span class="muted">· applied (log next to it)</span>{% endif %}
+      {% if s.restore %}<span class="muted">· has a restore script</span>{% endif %}</li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

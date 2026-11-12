@@ -102,7 +102,7 @@ def walk(
             result.dirs.append(_rel(current, root_str))
         subdirs = []
         for entry in entries:
-            if _ignored(entry.name, ignore):
+            if _ignored(entry.name, ignore) or entry.name == classify.QUARANTINE_DIR:
                 continue
             try:
                 if entry.is_symlink() and not follow_symlinks:
