@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import sort_th, pager, select, video_summary %}
+{% from "_macros.html" import sort_th, pager, select, video_summary, file_ref %}
 {% block title %}Files · media-audit{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -56,10 +56,8 @@
   <tbody>
   {% for f in page.rows %}
   <tr>
-    {% set folder = f.rel_path[: -(f.filename | length) - 1] if f.rel_path != f.filename else "" %}
     <td class="path">
-      <div class="file-name">{% if f.title_id %}<a href="/titles/{{ f.title_id }}">{{ f.filename }}</a>{% else %}{{ f.filename }}{% endif %}</div>
-      {% if folder %}<a class="file-folder" href="{{ qs({}, library=f.library, folder=folder, role='all', sort=params.sort, dir=params.dir) }}" title="Show every file in {{ folder }}/">{{ folder }}/</a>{% endif %}
+      {{ file_ref(f.rel_path, f.library, f.title_id, f.id, extra={"sort": params.sort, "dir": params.dir}) }}
       {% if f.analyze_error %}<div class="error small">{{ f.analyze_error }}</div>{% endif %}
     </td>
     <td>{{ f.library }}</td>

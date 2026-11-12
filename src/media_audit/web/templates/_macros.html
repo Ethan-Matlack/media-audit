@@ -78,3 +78,50 @@
 </form>
 {% endif %}
 {% endmacro %}
+
+{#- ------------------------------------------------------------------ file references
+  One way of showing a file or folder everywhere: its name on top, the folder it's in
+  underneath in small grey. A file name links to its row on the title page; a folder
+  links to the Files page listing everything in it. `base` (a title's folder) shortens
+  the grey folder to the part below the title, which is shown just above it. -#}
+{% macro folder_ref(folder, library, base=none, extra={}) -%}
+{% if folder %}<a class="ref-folder" href="{{ folder_url(library, folder, **extra) }}" title="Show every file in {{ folder }}/">{{ rel_folder(folder, base) }}/</a>{% endif %}
+{%- endmacro %}
+
+{% macro file_ref(path, library, title_id=none, file_id=none, base=none, aside=none, show_folder=true, is_folder=false, extra={}) -%}
+{% set leaf = path.rstrip("/").rpartition("/")[2] %}
+<div class="ref">
+  <div class="ref-line">
+    <span class="ref-name">
+      {%- if is_folder %}<a href="{{ folder_url(library, path.rstrip('/'), **extra) }}" title="Show every file in {{ path }}/">{{ leaf }}/</a>
+      {%- elif title_id %}<a href="/titles/{{ title_id }}{% if file_id %}#file-{{ file_id }}{% endif %}">{{ leaf }}</a>
+      {%- else %}{{ leaf }}{% endif -%}
+    </span>
+    {%- if aside %}<span class="ref-aside">{{ aside }}</span>{% endif %}
+  </div>
+  {% if show_folder %}{{ folder_ref(path | parent_folder, library, base, extra) }}{% endif %}
+</div>
+{%- endmacro %}
+
+{#- Where an issue is: the title, then the file(s) or folder(s) it's about. -#}
+{% macro issue_where(r, show_title=true) -%}
+{% set base = r.title_folder %}
+{% if show_title and r.title_id %}<a class="where-title" href="/titles/{{ r.title_id }}">{{ r.title_name }}{% if r.title_year %} ({{ r.title_year }}){% endif %}</a>{% endif %}
+{% set data = r.data or {} %}
+{% if data.folders %}
+  {% set parents = data.folders | map(attribute="path") | map("parent_folder") | unique | list %}
+  <ul class="ref-list">{% for d in data.folders %}<li>{{ file_ref(d.path, r.library, base=base, aside=d.summary, show_folder=parents | length > 1, is_folder=true) }}</li>{% endfor %}</ul>
+  {% if parents | length == 1 %}{{ folder_ref(parents[0], r.library, base) }}{% endif %}
+{% elif data.folder %}
+  {{ file_ref(data.folder, r.library, base=base, is_folder=true) }}
+  {% if data.files %}
+  <ul class="ref-contents">{% for f in data.files %}<li>{{ f.path[data.folder | length + 1:] }} <span class="nowrap">· {{ f.size | bytes }}</span></li>{% endfor %}</ul>
+  {% endif %}
+{% elif data.files %}
+  {% set parents = data.files | map(attribute="path") | map("parent_folder") | unique | list %}
+  <ul class="ref-list">{% for f in data.files %}<li>{{ file_ref(f.path, r.library, r.title_id, f.id, base, f.size | bytes, parents | length > 1) }}</li>{% endfor %}</ul>
+  {% if parents | length == 1 %}{{ folder_ref(parents[0], r.library, base) }}{% endif %}
+{% elif r.file_path %}
+  {{ file_ref(r.file_path, r.library, r.title_id, r.file_id, base) }}
+{% endif %}
+{%- endmacro %}

@@ -128,6 +128,28 @@ def query_string(params: Mapping[str, str], **changes: Any) -> str:
     return ("?" + urlencode(merged)) if merged else "?"
 
 
+def parent_folder(path: str) -> str:
+    """'Show/Season 01/ep.mkv' -> 'Show/Season 01' ('' for a file in the library root)."""
+    return path.rstrip("/").rpartition("/")[0]
+
+
+def rel_folder(folder: str, base: str | None) -> str:
+    """A folder as shown under a title: relative to the title folder when it's inside it.
+
+    The title folder itself is shown as is, so a file directly in it still says where.
+    """
+    if base and folder.startswith(base + "/"):
+        return folder[len(base) + 1 :]
+    return folder
+
+
+def folder_url(library: str, folder: str, **extra: Any) -> str:
+    """The Files page listing everything in one folder (and below it)."""
+    params = {"library": library, "folder": folder, "role": "all"}
+    params.update({k: str(v) for k, v in extra.items() if v})
+    return "/files?" + urlencode(params)
+
+
 def _distinct_labels(values: list[float]) -> tuple[list[str], int]:
     """Byte labels with just enough decimals that neighbouring values differ."""
     for digits in range(1, 5):
@@ -212,8 +234,10 @@ def _env() -> Environment:
         episode=episode_code,
         audio_label=audio_label,
         shell_quote=shlex.quote,
+        parent_folder=parent_folder,
     )
-    env.globals.update(qs=query_string, version=display_version(), asset_tag=asset_tag(),
+    env.globals.update(qs=query_string, folder_url=folder_url, rel_folder=rel_folder,
+                       version=display_version(), asset_tag=asset_tag(),
                        build=None if channel() == "dev" else build_label())  # fmt: skip
     return env
 

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import severity_badge, ignore_button %}
+{% from "_macros.html" import severity_badge, ignore_button, issue_where %}
 {% block title %}Issues · media-audit{% endblock %}
 {% block content %}
 {% set here = request.url.path ~ qs(params) %}
@@ -65,24 +65,14 @@
   <p class="muted small explain-line">{{ c.explain }}</p>
   <div class="table-wrap">
   <table class="data issues">
-    <thead><tr><th>Library</th><th>Title</th><th>Issue</th><th class="actions-col"><span class="visually-hidden">Actions</span></th></tr></thead>
+    <thead><tr><th>Library</th><th>Where</th><th>Issue</th><th class="actions-col"><span class="visually-hidden">Actions</span></th></tr></thead>
     <tbody>
     {% for r in g.rows %}
       <tr class="{{ 'ignored' if r.ignored }}" data-issue-row>
         <td class="nowrap">{{ r.library }}</td>
-        <td class="path">
-          {% if r.title_id %}<a href="/titles/{{ r.title_id }}">{{ r.title_name }}{% if r.title_year %} ({{ r.title_year }}){% endif %}</a>{% endif %}
-          {% if r.file_path %}<div class="muted small">{{ r.file_path }}</div>
-          {% elif r.data and r.data.folder %}<div class="muted small">{{ r.data.folder }}/</div>{% endif %}
-        </td>
+        <td class="path where">{{ issue_where(r) }}</td>
         <td>
           {{ r.message }}
-          {% if r.data and r.data.files %}
-          <ul class="file-list small muted">{% for f in r.data.files %}<li>{{ f.path }} <span class="nowrap">· {{ f.size | bytes }}</span></li>{% endfor %}</ul>
-          {% endif %}
-          {% if r.data and r.data.folders %}
-          <ul class="file-list small muted">{% for d in r.data.folders %}<li>{{ d.path }}/ <span class="nowrap">· {{ d.summary }}</span></li>{% endfor %}</ul>
-          {% endif %}
           {% if r.data and r.data.titles %}
           <div class="small">{% for t in r.data.titles %}<a href="/titles/{{ t.id }}">{{ t.library }}: {{ t.name }}{% if t.year %} ({{ t.year }}){% endif %}</a>{{ ", " if not loop.last }}{% endfor %}</div>
           {% endif %}

@@ -381,3 +381,25 @@ def test_nfo_and_loose_episode_checks(
 
     cfg.flags.strict_nfo = False
     assert not [f for f in collect(conn, cfg) if f.data and f.data.get("kind") == "nfo"]
+
+
+def test_issue_files_shown_like_the_files_page(client: TestClient) -> None:
+    import re
+
+    page = client.get("/issues?code=duplicate_episode").text
+    where = page.split('<td class="path where">')[1].split("</td>")[0]
+    # Each file: its name, linking to its row on the title page...
+    links = re.findall(r'href="/titles/(\d+)#file-(\d+)">([^<]+)</a>', where)
+    assert [name for _, _, name in links] == [
+        "Show (2010) - S01E02 - B [WEBDL-1080p].mkv",
+        "Show (2010) - S01E02 - B [HDTV-720p].mkv",
+    ]
+    # ...and the folder they share, once, relative to the title shown above it.
+    folders = re.findall(r'class="ref-folder" href="([^"]+)"[^>]*>([^<]+)</a>', where)
+    assert [label for _, label in folders] == ["Season 01/"]
+    assert "folder=Show+%282010%29+%7Btvdb-1%7D%2FSeason+01" in folders[0][0]
+
+    tid, fid, _ = links[0]
+    title = client.get(f"/titles/{tid}").text
+    assert f'id="file-{fid}"' in title
+    assert 'class="ref-folder"' in title  # the title page's issue list uses the same parts

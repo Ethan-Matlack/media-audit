@@ -80,6 +80,18 @@
   bindResults();
   window.addEventListener("popstate", () => window.location.reload());
 
+  // ------------------------------------------------------------ links to a file's row
+  // /titles/N#file-M: open the collapsed season it's in, then scroll to it.
+  function revealTarget() {
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    const el = id && document.getElementById(id);
+    if (!el) return;
+    for (let d = el.closest("details"); d; d = d.parentElement.closest("details")) d.open = true;
+    el.scrollIntoView({ block: "start" });  // scroll-margin-top keeps it below the header
+  }
+  revealTarget();
+  window.addEventListener("hashchange", revealTarget);
+
   // ------------------------------------------------------------ scan status
   const pill = $("#status-pill");
   const onScans = document.body.dataset.page === "scans";
