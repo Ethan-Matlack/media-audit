@@ -125,3 +125,57 @@
   {{ file_ref(r.file_path, r.library, r.title_id, r.file_id, base) }}
 {% endif %}
 {%- endmacro %}
+
+{#- ------------------------------------------------------------------ multi-select filter
+  A button that opens a list of values with counts, an Is / Is not switch and (for long
+  lists) a search box. Plain checkboxes and radios inside the filter form, so it works
+  without JavaScript; app.js adds closing on outside click, search and live updates. -#}
+{% macro facet_summary(f, rows, params) -%}
+{% set sel = rows | selectattr("selected") | list %}
+{%- if not sel %}Any{% else %}{{ "not " if params.get(f.key ~ "_not") == "1" }}{% if sel | length <= 2 %}{{ sel | map(attribute="label") | join(", ") }}{% else %}{{ sel | length }} selected{% endif %}{% endif -%}
+{%- endmacro %}
+
+{% macro facet_options(f, rows) -%}
+{% for r in rows %}<li class="{{ 'zero' if not r.count }}"><label><input type="checkbox" name="{{ f.key }}" value="{{ r.value }}" {% if r.selected %}checked{% endif %}><span class="facet-opt">{{ r.label }}</span><span class="facet-count">{{ r.count | num }}</span></label></li>{% endfor %}
+{% if not rows %}<li class="muted small facet-empty">No values with the other filters</li>{% endif %}
+{%- endmacro %}
+
+{% macro facet(f, rows, params) %}
+{% set neg = params.get(f.key ~ "_not") == "1" %}
+{% set active = rows | selectattr("selected") | list %}
+<details class="facet" data-facet="{{ f.key }}">
+  <summary class="facet-button{{ ' active' if active }}" data-facet-button>
+    <span class="facet-label">{{ f.label }}</span>
+    <span class="facet-value" data-facet-summary>{{ facet_summary(f, rows, params) }}</span>
+  </summary>
+  <div class="facet-panel">
+    <div class="facet-mode">
+      <label><input type="radio" name="{{ f.key }}_not" value="" {% if not neg %}checked{% endif %}><span>{{ "Has" if f.is_track else "Is" }}</span></label>
+      <label><input type="radio" name="{{ f.key }}_not" value="1" {% if neg %}checked{% endif %}><span>{{ "Has none of" if f.is_track else "Is not" }}</span></label>
+    </div>
+    {% if rows | length > 8 %}<input type="search" class="facet-search" placeholder="Find…" aria-label="Find a {{ f.label | lower }}" data-facet-search>{% endif %}
+    <ul class="facet-options" data-facet-list>{{ facet_options(f, rows) }}</ul>
+    <div class="facet-foot"><button type="button" class="link" data-facet-clear>Clear</button></div>
+  </div>
+</details>
+{% endmacro %}
+
+{#- One removable chip per active filter, plus "Clear all". -#}
+{% macro active_filters(facet_defs, facets, params) %}
+{% set chips = [] %}
+{% for f in facet_defs %}{% set sel = facets[f.key] | selectattr("selected") | list %}{% if sel %}
+  {% set _ = chips.append((f.label ~ ": " ~ ("not " if params.get(f.key ~ "_not") == "1" else "") ~ (sel | map(attribute="label") | join(", ")), {f.key: None, f.key ~ "_not": None})) %}
+{% endif %}{% endfor %}
+{% if params.q %}{% set _ = chips.append(("Path " ~ ("doesn't contain" if params.q_not == "1" else "contains") ~ " “" ~ params.q ~ "”", {"q": None, "q_not": None})) %}{% endif %}
+{% if params.folder %}{% set _ = chips.append(("In " ~ params.folder ~ "/", {"folder": None})) %}{% endif %}
+{% if params.min_gb %}{% set _ = chips.append(("At least " ~ params.min_gb ~ " GB", {"min_gb": None})) %}{% endif %}
+{% if params.max_gb %}{% set _ = chips.append(("At most " ~ params.max_gb ~ " GB", {"max_gb": None})) %}{% endif %}
+{% if params.remux == "1" %}{% set _ = chips.append(("Remux", {"remux": None})) %}{% endif %}
+{% if params.errors == "1" %}{% set _ = chips.append(("Unreadable", {"errors": None})) %}{% endif %}
+{% if chips %}
+<div class="chips" aria-label="Active filters">
+  {% for text, drop in chips %}<a class="chip" href="{{ qs(params, page=None, **drop) }}" title="Remove this filter">{{ text }} <span aria-hidden="true">×</span></a>{% endfor %}
+  <a class="small" href="/files{{ qs({}, role=params.role, sort=params.sort, dir=params.dir) }}">Clear all</a>
+</div>
+{% endif %}
+{% endmacro %}

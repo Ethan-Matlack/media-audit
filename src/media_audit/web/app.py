@@ -117,15 +117,24 @@ def audio_label(a: Mapping[str, Any]) -> str:
     return f"{name} {a.get('channels_label') or ''}".strip()
 
 
+def _pairs(params: Mapping[str, str]) -> list[tuple[str, str]]:
+    """Every (key, value) pair, keeping repeated keys (``?alang=en&alang=ja``)."""
+    multi = getattr(params, "multi_items", None)
+    return list(multi()) if multi else list(params.items())
+
+
 def query_string(params: Mapping[str, str], **changes: Any) -> str:
-    """The current query string with some keys changed (None removes a key)."""
-    merged = {k: v for k, v in params.items() if v not in ("", None)}
+    """The current query string with some keys changed.
+
+    None or "" removes a key; a list sets several values for it.
+    """
+    pairs = [(k, v) for k, v in _pairs(params) if v not in ("", None) and k not in changes]
     for key, value in changes.items():
-        if value is None or value == "":
-            merged.pop(key, None)
-        else:
-            merged[key] = str(value)
-    return ("?" + urlencode(merged)) if merged else "?"
+        if isinstance(value, list | tuple):
+            pairs.extend((key, str(v)) for v in value if v not in ("", None))
+        elif value is not None and value != "":
+            pairs.append((key, str(value)))
+    return ("?" + urlencode(pairs)) if pairs else "?"
 
 
 def parent_folder(path: str) -> str:
@@ -246,7 +255,7 @@ def _env() -> Environment:
 
 
 def _key(name: str, params: Mapping[str, str], *extra: Any) -> tuple[Any, ...]:
-    return (name, tuple(sorted(params.items())), *extra)
+    return (name, tuple(sorted(_pairs(params))), *extra)
 
 
 def create_app(service: ScanService) -> Starlette:
@@ -267,7 +276,7 @@ def create_app(service: ScanService) -> Starlette:
         )
         context = {
             "request": request,
-            "params": dict(request.query_params),
+            "params": request.query_params,  # keeps repeated keys (multi-select filters)
             "status": service.status(),
             "config_error": service.config_error(),
             "config_path": service.config_path,
@@ -392,14 +401,15 @@ def create_app(service: ScanService) -> Starlette:
     def files(request: Request, conn: sqlite3.Connection) -> Response:
         params = request.query_params
         page = db.cached(_key("files", params), lambda: queries.files(conn, params))
-        options = db.cached(("file_options",), lambda: queries.file_filter_options(conn))
-        return render(request, "files.html", _conn=conn, page=page, options=options)
+        facets = db.cached(_key("facets", params), lambda: queries.facet_counts(conn, params))
+        return render(request, "files.html", _conn=conn, page=page, facets=facets,
+                      facet_defs=queries.FACETS)  # fmt: skip
 
     async def files_csv(request: Request) -> Response:
         path = db_path()
         if path is None or not path.exists():
             return PlainTextResponse("no database yet", status_code=404)
-        params = dict(request.query_params)
+        params = request.query_params
 
         def stream() -> Iterator[str]:
             buf = io.StringIO()
@@ -583,7 +593,7 @@ def create_app(service: ScanService) -> Starlette:
                 db.cached(("overview", None), lambda: queries.overview(conn, None))
                 db.cached(_key("titles", empty), lambda: queries.titles(conn, empty))
                 db.cached(_key("files", empty), lambda: queries.files(conn, empty))
-                db.cached(("file_options",), lambda: queries.file_filter_options(conn))
+                db.cached(_key("facets", empty), lambda: queries.facet_counts(conn, empty))
                 db.cached(("issue_count",), lambda: queries.open_issue_count(conn))
                 db.cached(_key("issues", empty), lambda: queries.issues(conn, empty))
         except Exception:  # only an optimisation; pages compute on demand anyway

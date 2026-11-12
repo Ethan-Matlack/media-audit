@@ -19,6 +19,7 @@
       const fresh = $("#results", doc);
       if (!fresh) { window.location.href = url; return; }
       results.replaceWith(fresh);
+      refreshFacets(doc);
       bindResults();
       if (push) history.pushState({ partial: true }, "", url);
     } catch (err) {
@@ -39,17 +40,79 @@
   for (const form of $$("form[data-autosubmit]")) {
     let timer = null;
     const go = () => swapResults(formUrl(form), true);
+    const later = (ms) => { clearTimeout(timer); timer = setTimeout(go, ms); };
     form.addEventListener("change", (e) => {
       if (e.target.matches("input[type=search]")) return; // handled by input below
+      if (e.target.closest(".facet")) { later(250); return; } // ticking several in a row
       go();
     });
     form.addEventListener("input", (e) => {
+      if (e.target.matches("[data-facet-search]")) { filterFacet(e.target); return; }
       if (!e.target.matches("input[type=search], input[type=number]")) return;
-      clearTimeout(timer);
-      timer = setTimeout(go, 350);
+      later(350);
     });
     form.addEventListener("submit", (e) => { e.preventDefault(); go(); });
   }
+
+  // ------------------------------------------------------------ multi-select filters
+  function filterFacet(input) {
+    const needle = input.value.trim().toLowerCase();
+    const list = input.closest(".facet").querySelector("[data-facet-list]");
+    for (const li of list.children) {
+      li.hidden = needle !== "" && !li.textContent.toLowerCase().includes(needle);
+    }
+  }
+
+  // After a live update, bring each filter's counts and summary up to date in place,
+  // keeping any open panel, its search text and the focused checkbox.
+  function refreshFacets(doc) {
+    for (const facet of $$("details[data-facet]")) {
+      const fresh = $('details[data-facet="' + facet.dataset.facet + '"]', doc);
+      if (!fresh) continue;
+      const focused = document.activeElement;
+      const focusValue = facet.contains(focused) && focused.type === "checkbox" ? focused.value : null;
+      $("[data-facet-list]", facet).innerHTML = $("[data-facet-list]", fresh).innerHTML;
+      $("[data-facet-summary]", facet).textContent = $("[data-facet-summary]", fresh).textContent;
+      $("[data-facet-button]", facet).className = $("[data-facet-button]", fresh).className;
+      const search = $("[data-facet-search]", facet);
+      if (search) filterFacet(search);
+      if (focusValue !== null) {
+        const box = $$("input[type=checkbox]", facet).find((b) => b.value === focusValue);
+        if (box) box.focus();
+      }
+    }
+  }
+
+  for (const facet of $$("details[data-facet]")) {
+    facet.addEventListener("toggle", () => {
+      if (!facet.open) return;
+      for (const other of $$("details[data-facet][open]")) if (other !== facet) other.open = false;
+      const panel = $(".facet-panel", facet);
+      panel.classList.remove("flip");
+      if (panel.getBoundingClientRect().right > window.innerWidth - 8) panel.classList.add("flip");
+      const search = $("[data-facet-search]", facet);
+      if (search && window.matchMedia("(pointer: fine)").matches) search.focus();
+    });
+    const clear = $("[data-facet-clear]", facet);
+    if (clear) clear.addEventListener("click", () => {
+      for (const box of $$("input[type=checkbox]", facet)) box.checked = false;
+      const is = $("input[type=radio][value='']", facet);
+      if (is) {
+        is.checked = true;
+        is.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+  }
+  document.addEventListener("click", (e) => {
+    for (const open of $$("details[data-facet][open]")) if (!open.contains(e.target)) open.open = false;
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    for (const open of $$("details[data-facet][open]")) {
+      open.open = false;
+      $("summary", open).focus();
+    }
+  });
 
   function bindResults() {
     const results = $("#results");

@@ -281,6 +281,21 @@ Linux server have them).
 
 ## Exploring the data
 
+The **Files** page is for drilling down. Every filter (library, resolution, dynamic
+range, codec, audio, audio and subtitle language, container, source, release group)
+takes several values and an **Is / Is not** switch, and lists each value with how many
+files have it given the *other* filters. For example, *anime files with no English
+audio track*: Library = anime, Audio language → Has none of → en.
+
+* "Is not" includes files where the value is unknown (e.g. unreadable files for
+  "not 1080p"); pick "(unknown)" to filter on those directly.
+* Audio and subtitle filters look at every track: "Has none of en" keeps a
+  Japanese-only file and one with no audio, but not a dual-audio one. An untagged track
+  is "(unknown)", never assumed to be English.
+* Path can be "contains" or "doesn't contain". The page shows the total size of the
+  matching files, active filters as removable chips, and the URL is shareable; Export
+  CSV uses the same filters.
+
 The web UI covers the common questions. For anything else, the SQLite database is
 plain SQL: open it with `sqlite3`, or run the Datasette profile in compose. The main
 views are `v_media` (one row per live video file with derived fields) and
