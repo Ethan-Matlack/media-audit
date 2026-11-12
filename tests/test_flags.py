@@ -323,3 +323,61 @@ def test_folder_issues_on_the_page(folders: tuple[Any, Config, Path], tmp_path: 
     assert "Empty folders" in page and "Blank (2000)/" in page
     csv_text = client.get("/issues.csv").text
     assert "Old Movie (1990)/" in csv_text
+
+
+NFO_TV = {
+    "Show {tvdb-3}/tvshow.nfo": 5,  # metadata: fine
+    "Show {tvdb-3}/PRG ©.nfo": 9,  # scene release info
+    "Show {tvdb-3}/Show - S01E09.nfo": 4,  # its episode moved into Season 01
+    "Show {tvdb-3}/Season 01/season.nfo": 3,  # metadata: fine
+    "Show {tvdb-3}/Season 01/Show - S01E01 - A.mkv": 1000,
+    "Show {tvdb-3}/Season 01/Show - S01E01 - A.nfo": 3,  # matches its video: fine
+    "Show {tvdb-3}/Season 01/Show - S01E09 - I.mkv": 1000,
+    "Show {tvdb-3}/Show - S01E05 - E.mkv": 1000,  # loose next to season folders
+    "Show {tvdb-3}/Show - S01E05 - E.nfo": 3,  # matches the loose video: fine
+    "Show {tvdb-3}/Show - S02E01 - X.mkv": 1000,  # loose, and no Season 02 folder
+    "Show {tvdb-3}/Extras/Making of.nfo": 2,  # bonus material: fine
+    "Flat Show/Flat Show - S01E01.mkv": 900,  # no season folders at all: fine
+    "Flat Show/Flat Show - S01E02.mkv": 900,
+    "Gone Show/Season 02/Gone Show - S02E01.nfo": 2,  # in a folder with no videos
+    "Gone Show/Season 01/Gone Show - S01E01.mkv": 800,
+}
+NFO_MOVIES = {
+    "Heat (1995)/Heat (1995).mkv": 2000,
+    "Heat (1995)/movie.nfo": 3,
+    "Heat (1995)/heat.1995.1080p.bluray-grp.nfo": 6,  # release info
+}
+
+
+def test_nfo_and_loose_episode_checks(
+    make_tree: Callable[[str, dict[str, int | str]], Path], make_config: Callable[..., Config]
+) -> None:
+    cfg = make_config(tv=(make_tree("tv", dict(NFO_TV)), "tv"),
+                      movies=(make_tree("movies", dict(NFO_MOVIES)), "movies"))  # fmt: skip
+    conn = connect(cfg.database)
+    run_scan(conn, cfg, analyzer=FakeAnalyzer({}))
+    flags = _codes(conn)
+
+    def path(r: Any) -> str:
+        return str(conn.execute("SELECT rel_path FROM files WHERE id = ?",
+                                (r["file_id"],)).fetchone()[0])  # fmt: skip
+
+    strays = {path(r): r["message"] for r in flags["stray_file"]}
+    assert set(strays) == {"Show {tvdb-3}/PRG ©.nfo", "Show {tvdb-3}/Show - S01E09.nfo",
+                           "Heat (1995)/heat.1995.1080p.bluray-grp.nfo"}  # fmt: skip
+    assert strays["Show {tvdb-3}/PRG ©.nfo"].startswith("Not media-server metadata (.nfo)")
+    # Gone Show/Season 02 is reported as a folder with no videos, not file by file.
+    assert any("Season 02" in r["data"] for r in flags["no_video_folder"])
+
+    loose = {path(r): r["message"] for r in flags["episode_outside_season"]}
+    assert loose == {
+        "Show {tvdb-3}/Show - S01E05 - E.mkv":
+            "S01E05: In the show folder, not a season folder; Season 01 has the rest of "
+            "that season",
+        "Show {tvdb-3}/Show - S02E01 - X.mkv":
+            "S02E01: In the show folder, not a season folder; the show's other episodes are "
+            "in season folders",
+    }  # fmt: skip
+
+    cfg.flags.strict_nfo = False
+    assert not [f for f in collect(conn, cfg) if f.data and f.data.get("kind") == "nfo"]

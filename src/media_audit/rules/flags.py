@@ -15,7 +15,7 @@ Severity = Literal["error", "warning", "info"]
 SEVERITY_ORDER: dict[str, int] = {"error": 0, "warning": 1, "info": 2}
 
 # Bump when checks change so a running container recomputes issues on start.
-FLAGS_VERSION = 3
+FLAGS_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -49,7 +49,9 @@ _CHECKS = [
           "Files that aren't video, subtitles, artwork or metadata: partial downloads, "
           "leftover archives, text files. Expected types are set in "
           "flags.allowed_extensions; anything inside an extras folder (Extras, "
-          "Featurettes, Commentaries…) counts as bonus material."),
+          "Featurettes, Commentaries…) counts as bonus material. An .nfo file counts "
+          "only if media servers read it: tvshow.nfo, season.nfo, movie.nfo, or named "
+          "after a video next to it; others are release info or leftovers."),
     Check("no_video_folder", "problems", "warning", "Folders with no videos left",
           "A movie, show or season folder that only holds artwork, metadata, subtitles or "
           "other leftovers. Usually what's left after the video was deleted, moved or "
@@ -96,6 +98,10 @@ _CHECKS = [
     Check("unnumbered_episode", "naming", "warning", "Episodes without an episode number",
           "The filename has no SxxEyy (or absolute) episode number, so the episode can't "
           "be placed or counted."),
+    Check("episode_outside_season", "naming", "info", "Episodes outside their season folder",
+          "An episode directly in the show folder while the show's other episodes are in "
+          "season folders: usually a botched import or rename. Shows without season "
+          "folders aren't flagged. Sonarr's rename (Organize) moves it back."),
     Check("no_ids", "naming", "info", "Titles without a TMDB/TVDB/IMDb ID",
           "No {tmdb-…}, {tvdb-…} or {imdb-…} in the folder or file names. Linking across "
           "libraries falls back to name and year."),

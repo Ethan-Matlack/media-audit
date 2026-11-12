@@ -187,6 +187,10 @@ class FlagsConfig(_Model):
     """Non-video, non-subtitle files that are expected in a library (artwork, metadata).
     Anything else is reported as a stray file."""
 
+    strict_nfo: bool = True
+    """Report .nfo files media servers don't read (anything but tvshow.nfo, season.nfo,
+    movie.nfo or <video name>.nfo) as stray files: scene release info and leftovers."""
+
     @field_validator("allowed_extensions")
     @classmethod
     def _lower(cls, v: list[str]) -> list[str]:

@@ -210,7 +210,7 @@ check, errors first; the nav shows how many errors and warnings are open.
 | `unreadable` | error | MediaInfo couldn't read a video stream: damaged, incomplete, or not video |
 | `disc_image` | error | `.iso`/`.img` instead of a video file |
 | `no_audio` | warning | video with no audio track |
-| `stray_file` | warning | not video, subtitles, artwork or metadata (partial downloads, `.txt`, `.dat`...); extras folders are exempt |
+| `stray_file` | warning | not video, subtitles, artwork or metadata (partial downloads, `.txt`, `.dat`...), or an `.nfo` media servers don't read (scene release info, or left over from a moved video); extras folders are exempt |
 | `no_video_folder` | warning | movie, show or season folder with only artwork, metadata or other leftovers |
 | `empty_folder` | warning | folder with nothing in it (files matched by `scan.ignore` don't count) |
 | `split_season` | warning | one season in two folders, e.g. `Season 1` and `Season 01`, or `Specials` and `Season 00` |
@@ -223,6 +223,7 @@ check, errors first; the nav shows how many errors and warnings are open.
 | `bitrate_outlier` | info | GB/hour far from the rest of the season, or from movies at the same resolution |
 | `unnumbered_episode` | warning | no episode number in the filename |
 | `missing_episodes` | info | gaps in episode numbering within a season |
+| `episode_outside_season` | info | episode directly in the show folder while the rest are in season folders (flat layouts aren't flagged) |
 | `no_ids` | info | no `{tmdb-…}`/`{tvdb-…}`/`{imdb-…}` in folder or file names |
 | `mixed_resolution_season` | info | one season at several resolutions |
 | `legacy_codec` | info | Xvid/DivX, MPEG-2, MPEG-1 or VC-1: upgrade candidates |
