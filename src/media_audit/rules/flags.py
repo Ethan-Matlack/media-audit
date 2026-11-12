@@ -15,7 +15,7 @@ Severity = Literal["error", "warning", "info"]
 SEVERITY_ORDER: dict[str, int] = {"error": 0, "warning": 1, "info": 2}
 
 # Bump when checks change so a running container recomputes issues on start.
-FLAGS_VERSION = 4
+FLAGS_VERSION = 5
 
 
 @dataclass(frozen=True)
@@ -61,11 +61,11 @@ _CHECKS = [
           "left behind by a rename. Only the outermost empty folder is listed."),
     # ---- duplicates
     Check("split_season", "duplicates", "warning", "Seasons split across folders",
-          "Two or more folders in one show for the same season, e.g. Season 1 and "
-          "Season 01, or Specials and Season 00. Usually an old folder left behind by a "
-          "rename. Recoverable space counts only folders without videos; duplicate "
-          "episodes between the folders are listed under Same episode stored more than "
-          "once."),
+          "Episodes of one season in two or more folders of a show, e.g. Season 1 and "
+          "Season 01, or Specials and Season 00: usually a rename that only moved some "
+          "episodes. A leftover folder with no videos is listed under Empty folders or "
+          "Folders with no videos left instead. Duplicate episodes between the folders "
+          "are listed under Same episode stored more than once."),
     Check("duplicate_episode", "duplicates", "warning", "Same episode stored more than once",
           "An episode with several files (two qualities, or a leftover copy). Recoverable "
           "space assumes you keep only the largest file."),

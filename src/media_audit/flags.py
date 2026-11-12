@@ -439,46 +439,50 @@ def _folder_checks(
             data={"folder": top, "files": [{"path": r["rel_path"], "size": r["size_bytes"]}
                                            for r in rows[:20]]}))  # fmt: skip
 
-    split: set[tuple[int, str]] = set()  # season folders already reported as split
+    # A season in several folders is only "split" when more than one of them has videos.
+    # A leftover beside the real folder (empty, or only junk) is reported on its own as an
+    # empty folder / folder with no videos, noting which folder has the season's videos.
+    twin_note: dict[tuple[int, str], str] = {}  # empty leftover -> note for its message
     for (lib_id, top, n), folders in sorted(seasons.items()):
         if (lib_id, top) in videoless:
             continue
         lib = libs[lib_id]
-        names = sorted(folders, key=lambda d: (-len(folders[d]), d))
-        if len(folders) > 1:
-            split.update((lib_id, f"{top}/{d}") for d in names)
-            reported[lib_id].extend(f"{top}/{d}" for d in names
-                                    if not any(r["is_video"] for r in folders[d]))  # fmt: skip
-            with_videos = [d for d in names if any(r["is_video"] for r in folders[d])]
-            spare = sum(r["size_bytes"] for d in names if d not in with_videos
-                        for r in folders[d]) if with_videos else 0  # fmt: skip
-            listing = "; ".join(f"{d} ({_folder_summary(folders[d], True)})" for d in names)
+        with_videos = sorted((d for d in folders if any(r["is_video"] for r in folders[d])),
+                             key=lambda d: (-len(folders[d]), d))  # fmt: skip
+        if len(with_videos) > 1:
+            listing = "; ".join(f"{d} ({_folder_summary(folders[d], True)})" for d in with_videos)
             out.add(lib["name"], Flag(
                 "split_season", f"split_season:{lib['name']}:{top}:S{n}",
                 ",".join(f"{d}:{len(folders[d])}:{sum(r['size_bytes'] for r in folders[d])}"
-                         for d in sorted(names)), lib_id,
-                f"{_season_name(n)} is in {len(names)} folders: {listing}",
+                         for d in sorted(with_videos)), lib_id,
+                f"{_season_name(n)} is in {len(with_videos)} folders: {listing}",
                 title_ids.get((lib_id, top)), None, n,
-                {"folders": [{"path": f"{top}/{d}", "empty": not folders[d],
-                              "summary": _folder_summary(folders[d], True)} for d in names]},
-                spare or None))  # fmt: skip
-            continue
-        (name,) = names
-        rows = folders[name]
-        if rows and not any(r["is_video"] for r in rows):
-            reported[lib_id].append(f"{top}/{name}")
+                {"folders": [{"path": f"{top}/{d}",
+                              "summary": _folder_summary(folders[d], True)}
+                             for d in with_videos]}))  # fmt: skip
+        note = ""
+        if with_videos and len(folders) > len(with_videos):
+            verb = "has" if len(with_videos) == 1 else "have"
+            note = f"; {' and '.join(with_videos)} {verb} this season's videos"
+        for name in sorted(folders):
+            rows = folders[name]
+            if name in with_videos:
+                continue
+            path = f"{top}/{name}"
+            if not rows:  # empty: reported with the other empty folders below
+                twin_note[(lib_id, path)] = note
+                continue
+            reported[lib_id].append(path)
             out.add(lib["name"], Flag(
-                "no_video_folder", f"no_video_folder:{lib['name']}:{top}/{name}",
+                "no_video_folder", f"no_video_folder:{lib['name']}:{path}",
                 ",".join(sorted(_fp(r) for r in rows)), lib_id,
-                f"{_season_name(n)} folder with {_folder_summary(rows, True)}",
+                f"{_season_name(n)} folder with {_folder_summary(rows, True)}{note}",
                 title_ids.get((lib_id, top)), None, n,
-                {"folder": f"{top}/{name}",
+                {"folder": path,
                  "files": [{"path": r["rel_path"], "size": r["size_bytes"]}
                            for r in rows[:20]]}))  # fmt: skip
 
     for lib_id, rel in empties:
-        if (lib_id, rel) in split:
-            continue
         lib = libs[lib_id]
         top = rel.split("/")[0]
         what = (
@@ -486,6 +490,7 @@ def _folder_checks(
             if "/" not in rel
             else "Empty folder"
         )
+        what += twin_note.get((lib_id, rel), "")
         out.add(lib["name"], Flag(
             "empty_folder", f"empty_folder:{lib['name']}:{rel}", "", lib_id, what,
             title_ids.get((lib_id, top)), data={"folder": rel}))  # fmt: skip

@@ -15,8 +15,8 @@ generated:
 * every path is relative to a library folder that must exist, with no ``..``;
 * every path is quoted with :func:`shlex.quote`, never pasted into the script raw.
 
-Phase 1 covers checks whose fix needs no judgement: empty folders (including the empty
-half of a split season), folders with no videos left, stray files and orphaned
+Phase 1 covers checks whose fix needs no judgement: empty folders (including a leftover
+"Season 1" beside "Season 01"), folders with no videos left, stray files and orphaned
 subtitles.
 """
 
@@ -35,8 +35,7 @@ from media_audit import __version__
 from media_audit.classify import QUARANTINE_DIR, VIDEO_EXTENSIONS
 from media_audit.config import Config
 
-SCRIPT_CODES = ("no_video_folder", "stray_file", "orphan_subtitle", "empty_folder",
-                "split_season")  # fmt: skip
+SCRIPT_CODES = ("no_video_folder", "stray_file", "orphan_subtitle", "empty_folder")
 SCRIPT_NAME = "cleanup-{stamp}.sh"
 SCRIPT_RE = r"^cleanup-\d{8}-\d{6}\.sh$"
 
@@ -193,23 +192,18 @@ def build_plan(conn: sqlite3.Connection, config: Config, where: str = "1 = 1",
             sec = stray if code == "stray_file" else orphan
             sec.files += 1
             sec.lines.append(move_line(n, r["rel_path"], r["size_bytes"], r["mtime_ns"]))
-        elif code in {"empty_folder", "split_season"}:
-            data = json.loads(r["data"]) if r["data"] else {}
-            if code == "empty_folder":
-                folders = [data.get("folder", "")]
-            else:  # only the empty half of a split season, e.g. a leftover "Season 1"
-                folders = [d["path"] for d in data.get("folders", []) if d.get("empty")]
-            for folder in folders:
-                if is_covered(r["library_id"], folder):
-                    continue
-                n = root_of(r)
-                if n is None:
-                    continue
-                if not _safe_rel(folder):
-                    refused += 1
-                    continue
-                empty.folders += 1
-                empty.lines.append(f"remove_empty {n} {_q(folder)}")
+        elif code == "empty_folder":
+            folder = (json.loads(r["data"]) if r["data"] else {}).get("folder", "")
+            if is_covered(r["library_id"], folder):
+                continue
+            n = root_of(r)
+            if n is None:
+                continue
+            if not _safe_rel(folder):
+                refused += 1
+                continue
+            empty.folders += 1
+            empty.lines.append(f"remove_empty {n} {_q(folder)}")
 
     scan = conn.execute(
         "SELECT finished_at FROM scans WHERE status = 'ok' ORDER BY id DESC LIMIT 1"

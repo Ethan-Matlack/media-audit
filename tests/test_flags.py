@@ -243,6 +243,8 @@ FOLDER_TV = {
     "Show {tvdb-2}/Season 1/folder.jpg": 20,
     "Show {tvdb-2}/Season 02/Show - S02E01 - C.mkv": 1000,
     "Show {tvdb-2}/Season 3/poster.jpg": 30,  # season folder with no videos
+    "Show {tvdb-2}/Season 4/Show - S04E01 - D.mkv": 1000,  # a real split: videos in both
+    "Show {tvdb-2}/Season 04/Show - S04E02 - E.mkv": 1000,
     "Show {tvdb-2}/tvshow.nfo": 5,
     "Gone Show/tvshow.nfo": 5,  # every video gone: one issue for the show, not per season
     "Gone Show/Season 01/episode.nfo": 5,
@@ -276,24 +278,25 @@ def test_folder_checks(folders: tuple[Any, Config, Path]) -> None:
     flags = _codes(conn)
     show_id = conn.execute("SELECT id FROM titles WHERE name = 'Show'").fetchone()[0]
 
-    split = {r["season_number"]: r for r in flags["split_season"]}
-    assert set(split) == {1, 2}
-    s1 = split[1]
-    assert s1["message"] == ("Season 1 is in 2 folders: Season 01 (2 episodes, 2 KB); "
-                             "Season 1 (no videos: jpg, nfo, 23 B)")  # fmt: skip
-    assert s1["bytes_recoverable"] == 23 and s1["title_id"] == show_id
-    assert "Season 2 (empty)" in split[2]["message"]
-    assert split[2]["bytes_recoverable"] is None
+    # Only a season with videos in more than one folder is "split".
+    (split,) = flags["split_season"]
+    assert split["season_number"] == 4 and split["title_id"] == show_id
+    assert split["message"] == ("Season 4 is in 2 folders: Season 04 (1 episode, 1 KB); "
+                                "Season 4 (1 episode, 1 KB)")  # fmt: skip
 
     no_video = {json.loads(r["data"])["folder"]: r["message"] for r in flags["no_video_folder"]}
     assert no_video == {
+        # A leftover with only junk beside the real season folder: a folder with no videos.
+        "Show {tvdb-2}/Season 1": "Season 1 folder with no videos: jpg, nfo, 23 B; "
+                                  "Season 01 has this season's videos",
         "Show {tvdb-2}/Season 3": "Season 3 folder with no videos: jpg, 30 B",
         "Gone Show": "Show folder with no videos: nfo ×2, 10 B",
         "Old Movie (1990)": "Movie folder with no videos: nfo, jpg, 44 B",
-    }
+    }  # fmt: skip
     empty = {json.loads(r["data"])["folder"]: r["message"] for r in flags["empty_folder"]}
-    # Season 2 is reported as part of the split season, not again as empty.
     assert empty == {
+        # An empty leftover beside the real season folder: an empty folder.
+        "Show {tvdb-2}/Season 2": "Empty folder; Season 02 has this season's videos",
         "Show {tvdb-2}/Season 01/Subs": "Empty folder",
         "Empty Show": "Empty show folder",
         "Blank (2000)": "Empty movie folder",
@@ -309,7 +312,10 @@ def test_folder_issues_clear_after_cleanup(folders: tuple[Any, Config, Path]) ->
     shutil.rmtree(tv / "Empty Show")
     run_scan(conn, cfg, analyzer=FakeAnalyzer({}))
     flags = _codes(conn)
-    assert "split_season" not in flags
+    assert [r["season_number"] for r in flags["split_season"]] == [4]  # still to merge
+    folders = {json.loads(r["data"])["folder"] for r in
+               flags["no_video_folder"] + flags["empty_folder"]}  # fmt: skip
+    assert not folders & {"Show {tvdb-2}/Season 1", "Show {tvdb-2}/Season 2"}
     assert "Empty Show" not in {json.loads(r["data"])["folder"] for r in flags["empty_folder"]}
 
 
@@ -319,7 +325,10 @@ def test_folder_issues_on_the_page(folders: tuple[Any, Config, Path], tmp_path: 
     cfg_file.write_text(f"database: {cfg.database}\nlibraries: []\nscan:\n  schedule: off\n")
     client = TestClient(create_app(ScanService(cfg_file)))
     page = client.get("/issues").text
-    assert "Seasons split across folders" in page and "Show {tvdb-2}/Season 1/" in page
+    split = page.split('id="check-split_season"')[1].split("</details>")[0]
+    assert "Season 4/" in split and "Season 04/" in split and "Season 2/" not in split
+    empty = page.split('id="check-empty_folder"')[1].split("</details>")[0]
+    assert "Season 2/" in empty and "Season 02 has this season&#39;s videos" in empty
     assert "Empty folders" in page and "Blank (2000)/" in page
     csv_text = client.get("/issues.csv").text
     assert "Old Movie (1990)/" in csv_text

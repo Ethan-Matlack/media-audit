@@ -213,7 +213,7 @@ check, errors first; the nav shows how many errors and warnings are open.
 | `stray_file` | warning | not video, subtitles, artwork or metadata (partial downloads, `.txt`, `.dat`...), or an `.nfo` media servers don't read (scene release info, or left over from a moved video); extras folders are exempt |
 | `no_video_folder` | warning | movie, show or season folder with only artwork, metadata or other leftovers |
 | `empty_folder` | warning | folder with nothing in it (files matched by `scan.ignore` don't count) |
-| `split_season` | warning | one season in two folders, e.g. `Season 1` and `Season 01`, or `Specials` and `Season 00` |
+| `split_season` | warning | one season's episodes in two folders, e.g. `Season 1` and `Season 01`, or `Specials` and `Season 00`; an empty or video-less leftover is reported as an empty folder / folder with no videos instead |
 | `duplicate_episode` | warning | one episode stored as several files; shows the space freed by keeping the largest |
 | `orphan_subtitle` | warning | subtitle file with no video of the same name |
 | `multi_version_movie` | info | several versions of one movie (often deliberate) |
@@ -255,7 +255,7 @@ ignored issues are always left out):
 |---|---|
 | Folders with no videos left | files move to quarantine, then the empty folder is removed |
 | Stray files, subtitles with no matching video | move to quarantine |
-| Empty folders, including the empty half of a split season (`Season 1` next to `Season 01`) | removed if still empty |
+| Empty folders, including a leftover `Season 1` next to `Season 01` | removed if still empty |
 
 Duplicates, unreadable files and the other checks need a decision and aren't scripted.
 
