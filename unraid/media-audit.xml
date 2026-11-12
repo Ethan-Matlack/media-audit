@@ -17,11 +17,22 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Ethan-Matlack/media-audit/issues</Support>
   <Project>https://github.com/Ethan-Matlack/media-audit</Project>
-  <Overview>Scans your media library (read-only) and reports what's actually in it: size per movie/show/season, and container, codecs, resolution, HDR10/HDR10+/Dolby Vision, Atmos/DTS:X, audio and subtitle languages and release group for every file. Browse it all in the web UI.[br][br]The container keeps running: it serves the web UI and rescans on a schedule (03:00 daily by default), and the Scans page has a Scan now button. Rescans only re-read new or changed files.[br][br]On the very first start it writes /config/config.yml from the folders it finds under /media and does not scan until you press Scan now, so you can review the library list first. The web UI has no login; keep it on your LAN.</Overview>
+  <Overview>Scans your media library (read-only) and reports what's actually in it: size per movie, show and season (with average episode size), and the container, codecs, resolution, HDR10/HDR10+/Dolby Vision, Atmos/DTS:X, audio and subtitle languages and release group of every file. An Issues page lists unreadable files, duplicate episodes and movie versions (with the space they use), stray and orphaned files, runtime and bitrate outliers, missing episodes and naming problems.[br][br]The container keeps running: it serves the web UI on port 8484 (click the container icon, then WebUI) and rescans on a schedule (03:00 daily by default); the Scans page has a Scan now button. Rescans only re-read new or changed files.[br][br]On the very first start it writes /config/config.yml from the folders it finds under /media and does not scan until you press Scan now, so you can review the library list first. The web UI has no login; keep it on your LAN.</Overview>
   <Category>MediaApp:Video Tools:</Category>
   <WebUI>http://[IP]:[PORT:8484]/</WebUI>
+  <Changes>
+### 0.3.1
+- Files page: the grey folder line under each file name lists every file in that folder.
+- Titles page: the issue count now follows the season count.
+- Template: icon, updated description.
+
+### 0.3.0
+- Web UI (Overview, Titles, Files, Issues, Scans) and scheduled scans; the container now stays running.
+- Issues page: problems, duplicates, outliers and naming checks, with an Ignore button.
+- Average episode size per show and season.
+  </Changes>
   <TemplateURL>https://raw.githubusercontent.com/Ethan-Matlack/media-audit/main/unraid/media-audit.xml</TemplateURL>
-  <Icon/>
+  <Icon>https://raw.githubusercontent.com/Ethan-Matlack/media-audit/main/src/media_audit/web/static/icon.svg</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
@@ -34,6 +45,6 @@
   <Config Name="Media" Target="/media" Default="/mnt/user/media" Mode="ro" Description="Folder containing your libraries (e.g. movies/, tv/). Mounted read-only; media-audit never modifies files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the scanner runs as (99 = nobody)." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID the scanner runs as (100 = users)." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
-  <Config Name="Scan schedule" Target="MEDIA_AUDIT_SCAN__SCHEDULE" Default="" Mode="" Description="Optional. When to rescan, as a cron expression in the TZ time zone (0 3 * * * = 03:00 daily, 0 */6 * * * = every 6 hours), or off. Empty uses scan.schedule from config.yml (03:00 daily by default)." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Scan schedule" Target="MEDIA_AUDIT_SCAN__SCHEDULE" Default="" Mode="" Description="Optional. When to rescan, as a cron expression in the server's time zone (0 3 * * * = 03:00 daily, 0 */6 * * * = every 6 hours), or off. Empty uses scan.schedule from config.yml (03:00 daily by default)." Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Scan workers" Target="MEDIA_AUDIT_SCAN__WORKERS" Default="2" Mode="" Description="Files analyzed in parallel. Keep low (1-4) for array disks." Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
 </Container>
