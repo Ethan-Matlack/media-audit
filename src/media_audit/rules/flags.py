@@ -15,7 +15,7 @@ Severity = Literal["error", "warning", "info"]
 SEVERITY_ORDER: dict[str, int] = {"error": 0, "warning": 1, "info": 2}
 
 # Bump when checks change so a running container recomputes issues on start.
-FLAGS_VERSION = 2
+FLAGS_VERSION = 3
 
 
 @dataclass(frozen=True)

@@ -427,7 +427,7 @@ def _folder_checks(conn: sqlite3.Connection, files: list[sqlite3.Row], out: _Col
                          for d in sorted(names)), lib_id,
                 f"{_season_name(n)} is in {len(names)} folders: {listing}",
                 title_ids.get((lib_id, top)), None, n,
-                {"folders": [{"path": f"{top}/{d}",
+                {"folders": [{"path": f"{top}/{d}", "empty": not folders[d],
                               "summary": _folder_summary(folders[d], True)} for d in names]},
                 spare or None))  # fmt: skip
             continue

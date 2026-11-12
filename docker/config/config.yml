@@ -37,6 +37,11 @@ scan:
 web:
   port: 8484
 
+# Cleanup scripts (Issues page): where /media and /config are on the host.
+# cleanup:
+#   host_media_path: /mnt/user/media
+#   host_config_path: /mnt/user/appdata/media-audit
+
 linking:
   by_id: true
   by_name_year: true

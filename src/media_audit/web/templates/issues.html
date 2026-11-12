@@ -5,7 +5,10 @@
 {% set here = request.url.path ~ qs(params) %}
 <div class="page-head">
   <h1>Issues</h1>
-  <a class="button" href="/issues.csv{{ qs(params, page=None) }}" download>Export CSV</a>
+  <div class="actions">
+    <a class="button" href="/issues/cleanup{{ qs(params, page=None, ignored=None) }}" title="Generate a script that moves junk to quarantine and removes empty folders; you review and run it">Cleanup script…</a>
+    <a class="button" href="/issues.csv{{ qs(params, page=None) }}" download>Export CSV</a>
+  </div>
 </div>
 
 <section class="tiles" aria-label="Issues by category">

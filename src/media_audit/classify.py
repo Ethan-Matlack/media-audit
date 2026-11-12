@@ -11,6 +11,8 @@ VIDEO_EXTENSIONS = frozenset(
         "vob", "flv", "webm", "divx", "ogm", "ogv", "asf", "rm", "rmvb", "3gp", "iso",
     }
 )  # fmt: skip
+# Where cleanup scripts move files (inside each library folder). Never scanned.
+QUARANTINE_DIR = ".media-audit-quarantine"
 SUBTITLE_EXTENSIONS = frozenset({"srt", "ass", "ssa", "sub", "idx", "sup", "vtt", "smi"})
 
 # Folder names Plex/Jellyfin/Emby treat as local extras (compared case-insensitively).

@@ -21,6 +21,9 @@
   <Category>MediaApp:Video Tools:</Category>
   <WebUI>http://[IP]:[PORT:8484]/</WebUI>
   <Changes>
+### 0.5.0
+- Cleanup scripts: the Issues page writes a script (saved to appdata, or downloaded) that moves junk files to a quarantine folder and removes empty folders. You review and run it; media-audit stays read-only. Set the new Host media path variable to the same folder as Media.
+
 ### 0.4.0
 - Files page: the grey folder line under each file name lists every file in that folder.
 - Titles page: the issue count now follows the season count.
@@ -46,6 +49,8 @@
   <Config Name="Media" Target="/media" Default="/mnt/user/media" Mode="ro" Description="Folder containing your libraries (e.g. movies/, tv/). Mounted read-only; media-audit never modifies files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the scanner runs as (99 = nobody)." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID the scanner runs as (100 = users)." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="Host media path (cleanup scripts)" Target="MEDIA_AUDIT_CLEANUP__HOST_MEDIA_PATH" Default="/mnt/user/media" Mode="" Description="Set this to the same folder as Media above. Cleanup scripts (Issues page) run on the server, not in the container, and use it to find your libraries. media-audit itself never writes to your media." Type="Variable" Display="always" Required="false" Mask="false">/mnt/user/media</Config>
+  <Config Name="Host appdata path (cleanup scripts)" Target="MEDIA_AUDIT_CLEANUP__HOST_CONFIG_PATH" Default="/mnt/user/appdata/media-audit" Mode="" Description="Set this to the same folder as Config above. Only used to show the command for running a saved cleanup script." Type="Variable" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/media-audit</Config>
   <Config Name="Scan schedule" Target="MEDIA_AUDIT_SCAN__SCHEDULE" Default="" Mode="" Description="Optional. When to rescan, as a cron expression in the server's time zone (0 3 * * * = 03:00 daily, 0 */6 * * * = every 6 hours), or off. Empty uses scan.schedule from config.yml (03:00 daily by default)." Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Scan workers" Target="MEDIA_AUDIT_SCAN__WORKERS" Default="2" Mode="" Description="Files analyzed in parallel. Keep low (1-4) for array disks." Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
 </Container>

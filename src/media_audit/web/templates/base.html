@@ -15,7 +15,7 @@
     <a href="/" {% if nav == "overview" %}aria-current="page"{% endif %}>Overview</a>
     <a href="/titles" {% if nav in ("titles", "title") %}aria-current="page"{% endif %}>Titles</a>
     <a href="/files" {% if nav == "files" %}aria-current="page"{% endif %}>Files</a>
-    <a href="/issues" {% if nav == "issues" %}aria-current="page"{% endif %}>Issues{% if issue_count %} <span class="count" title="{{ issue_count }} errors and warnings">{{ issue_count | num }}</span>{% endif %}</a>
+    <a href="/issues" {% if nav in ("issues", "cleanup", "cleanup_saved") %}aria-current="page"{% endif %}>Issues{% if issue_count %} <span class="count" title="{{ issue_count }} errors and warnings">{{ issue_count | num }}</span>{% endif %}</a>
     <a href="/scans" {% if nav == "scans" %}aria-current="page"{% endif %}>Scans</a>
   </nav>
   <a class="status-pill" href="/scans" id="status-pill" data-running="{{ 'true' if status.scan.running else 'false' }}">
