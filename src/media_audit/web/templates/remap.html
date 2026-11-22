@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Remap library · media-audit{% endblock %}
+{% block content %}
+<p class="small"><a href="/scans#libraries">← Scans</a></p>
+<div class="page-head"><h1>Remap library{% if library %} “{{ library.name }}”{% endif %}</h1></div>
+
+{% if post_error %}<div class="notice notice-error" role="alert">{{ post_error }}</div>{% endif %}
+{% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
+
+{% if library %}
+<section class="card">
+  <p>Points this library at a renamed or moved folder. Its history, analysis and ignored issues are kept,
+    and the next scan only checks file sizes and dates. Media files are never touched.</p>
+  <dl class="facts">
+    <dt>Current folder</dt><dd><code>{{ library.path }}</code></dd>
+  </dl>
+  <form method="get" action="/libraries/remap" class="filters">
+    <input type="hidden" name="library" value="{{ library.name }}">
+    <label class="grow">New folder (as media-audit sees it)
+      <input type="search" name="path" value="{{ path }}" placeholder="/media/movies2" required></label>
+    <label>Library name <input type="search" name="name" value="{{ name }}" required></label>
+    <button type="submit" class="button">Check</button>
+  </form>
+</section>
+
+{% if comparison %}
+{% set c = comparison %}
+<section class="card">
+  <h2>What's in <code>{{ c.path }}</code></h2>
+  <p>{% if c.likely %}<span class="status status-ok">Looks like the same library.</span>
+     {% else %}<span class="error"><strong>This doesn't look like the same library.</strong> Remap only if you're sure.</span>{% endif %}</p>
+  <ul>
+    <li><strong>{{ c.folders_matched | num }} of {{ c.folders_total | num }}</strong> title folders are there.</li>
+    <li><strong>{{ c.files_matched }} of {{ c.files_checked }}</strong> sampled files are there with the same size.</li>
+  </ul>
+  {% if c.missing %}<p class="small">Not found there: {{ c.missing | join(", ") }}{% if c.folders_total - c.folders_matched > c.missing | length %} and more{% endif %}</p>{% endif %}
+  {% if c.extra %}<p class="small muted">New there: {{ c.extra | join(", ") }}</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>What happens</h2>
+  <ul>
+    <li>The database is backed up next to itself (<code>media-audit.db.bak-remap-…</code>).</li>
+    <li>Library <strong>{{ library.name }}</strong>{% if name != library.name %} is renamed to <strong>{{ name }}</strong> and{% endif %}
+      points at <code>{{ path }}</code>; its stored file paths move with it.</li>
+    {% if merge %}<li><strong>{{ merge | join(", ") }}</strong> was already scanned from that folder as a new library; it's merged into this one.</li>{% endif %}
+    <li>{{ ignores | num }} ignored issue{{ "s" if ignores != 1 }} stay ignored.</li>
+    <li>A scan starts straight after; it only checks sizes and dates.</li>
+  </ul>
+  {% if edit and edit.new_text is none %}
+  <div class="notice notice-error">
+    <strong>config.yml can't be changed automatically:</strong> {{ edit.reason }}.
+    Change the library in your config to the lines below (or the matching environment variable), then
+    come back and Remap.
+    <pre class="command">{{ edit.snippet }}</pre>
+  </div>
+  {% elif edit and edit.changed %}
+  <p>config.yml is updated (the old file is kept as <code>config.yml.bak-…</code>):</p>
+  <pre class="command diff">{% for line in diff %}<span class="{{ 'add' if line.startswith('+') else ('del' if line.startswith('-') else ('hunk' if line.startswith('@@') else '')) }}">{{ line }}</span>
+{% endfor %}</pre>
+  {% else %}
+  <p class="small muted">config.yml already has this library at this folder; it isn't changed.</p>
+  {% endif %}
+  {% if not edit or edit.new_text is not none %}
+  <form method="post" action="/libraries/remap">
+    <input type="hidden" name="library" value="{{ library.name }}">
+    <input type="hidden" name="path" value="{{ path }}">
+    <input type="hidden" name="name" value="{{ name }}">
+    <button type="submit" name="action" value="remap" class="button primary" {% if status.scan.running %}disabled title="Wait for the scan to finish"{% endif %}>Remap</button>
+    {% if status.scan.running %}<span class="small muted">A scan is running; remap once it's done.</span>{% endif %}
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -14,6 +14,23 @@
   </div>
 </div>
 
+{% for sg in suggestions %}
+<div class="notice notice-warn" role="status">
+  <strong>Library “{{ sg.library }}” isn't at <code>{{ sg.old_path }}</code> any more.</strong>
+  <p><code>{{ sg.new_path }}</code> looks like the same library:
+    {{ sg.comparison.folders_matched | num }} of {{ sg.comparison.folders_total | num }} title folders and
+    {{ sg.comparison.files_matched }} of {{ sg.comparison.files_checked }} sampled files match.
+    Remapping keeps its history, analysis and ignored issues, so nothing is read again.</p>
+  <div class="actions">
+    <a class="button primary" href="/libraries/remap{{ qs({}, library=sg.library, path=sg.new_path, name=sg.name) }}">Review remap…</a>
+    <form method="post" action="/libraries/remap" class="inline">
+      <input type="hidden" name="library" value="{{ sg.library }}"><input type="hidden" name="path" value="{{ sg.new_path }}">
+      <button type="submit" name="action" value="dismiss" class="button">It's a different library</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
 <section class="card" id="scan-progress" aria-live="polite">
   <div data-when="running" {% if not s.running %}hidden{% endif %}>
     <h2>Scanning <span class="muted small" data-field="trigger">{{ s.trigger or "" }}</span></h2>
@@ -45,6 +62,36 @@
     {% endif %}
   </div>
 </section>
+
+{% if library_rows %}
+<section class="card" id="libraries">
+  <h2>Libraries</h2>
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Library</th><th>Folder</th><th>Type</th><th>Status</th><th class="num">Files</th><th class="num">Size</th>
+      <th class="actions-col"><span class="visually-hidden">Actions</span></th></tr></thead>
+    <tbody>
+    {% for l in library_rows %}
+      <tr class="{{ 'dim' if l.status in ('not in config', 'disabled') }}">
+        <td><strong>{{ l.name }}</strong></td>
+        <td class="path"><code>{{ l.path }}</code></td>
+        <td>{{ l.type }}</td>
+        <td>{% if l.status == "ok" %}{% if l.id is none %}<span class="muted">not scanned yet</span>{% else %}<span class="status status-ok">ok</span>{% endif %}
+          {% elif l.status == "missing" %}<span class="status status-failed">folder missing</span>
+          {% else %}<span class="muted">{{ l.status }}</span>{% endif %}</td>
+        <td class="num">{{ l.files | num }}</td>
+        <td class="num nowrap">{{ l.bytes | bytes }}</td>
+        <td class="actions-col">{% if l.id is not none and l.files %}<a class="button small-button" href="/libraries/remap{{ qs({}, library=l.name) }}">Remap…</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="small muted">Renamed or moved a library's folder? <strong>Remap</strong> points the library at the new
+    folder and updates the config, keeping its history, analysis and ignored issues. A library whose folder
+    only changed in the config (same name) is followed automatically at the next scan.</p>
+</section>
+{% endif %}
 
 <section class="card">
   <h2>History</h2>

@@ -1,7 +1,6 @@
 # media-audit
 
-> Working name. Status: **Phases 0–2 + web UI** (scanner, analyzer, rules, titles,
-> issues, web UI with scheduled scans).
+> Status: In-development. Working, but not yet fully-featured or guaranteed stable.
 
 A self-hosted tool that scans a media library on disk and reports what's actually in
 it: storage per movie/show/season and technical details for every file (container,
@@ -140,8 +139,28 @@ uv run media-audit serve          # web UI on http://localhost:8484 + scheduled 
 | `scan [-l LIB] [--no-analyze] [--retry-errors] [-w N]` | walk libraries, analyze new/changed files, rebuild titles |
 | `rederive` | re-apply all rules to stored MediaInfo data; reads no media files |
 | `stats [-l LIB] [--json]` | library breakdowns |
+| `remap-library LIB --path DIR [--name NEW] [--dry-run]` | point a library at its renamed/moved folder, keeping its history |
 | `check-config` | validate config, library paths, overlaps, libmediainfo |
 | `init-config [--media-root DIR] [--force]` | write a starter config from the folders in DIR |
+
+### Renamed or moved library folders
+
+Rename `movies` to `movies2` on disk and media-audit would otherwise see a missing
+library and a new one, and read every file again. Instead:
+
+* **Scans page:** when a library's folder is gone and another folder holds the same files
+  (title folder names, then the sizes of a sample of files), a banner suggests the
+  remap. **Review remap…** shows how much matches, what changes in config.yml (a diff;
+  comments and layout are kept) and then **Remap**: the library points at the new folder
+  (and name, if you change it), its stored paths move with it, history, analysis and
+  ignored issues are kept, and a quick scan confirms it. The database and config.yml are
+  backed up first (`*.bak-…` next to them). Any library can be remapped by hand from
+  the **Libraries** list on the same page; **It's a different library** hides a wrong
+  suggestion.
+* **Same name, new path:** change `path:` in the config and the next scan follows the
+  library to its new folder without re-reading anything.
+* If config.yml can't be edited safely (e.g. libraries come from `MEDIA_AUDIT_LIBRARIES`),
+  nothing is changed and the page shows the lines to change by hand.
 
 ### Rescans are cheap
 

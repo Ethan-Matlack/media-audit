@@ -21,6 +21,10 @@
   <Category>MediaApp:Video Tools:</Category>
   <WebUI>http://[IP]:[PORT:8484]/</WebUI>
   <Changes>
+### 0.6.0
+- Renamed or moved library folders: the Scans page spots them and remaps the library (config.yml included), keeping its history and analysis instead of reading everything again.
+- Files page: multi-select filters with Is / Is not, live counts, subtitle language, group by title or season.
+
 ### 0.5.0
 - Issues: .nfo files media servers don't read (scene release info, leftovers from moved episodes) are now stray files, so cleanup scripts quarantine them. New info check for episodes sitting outside their season folder.
 - Cleanup scripts: the Issues page writes a script (saved to appdata, or downloaded) that moves junk files to a quarantine folder and removes empty folders. You review and run it; media-audit stays read-only. Set the new Host media path variable to the same folder as Media.

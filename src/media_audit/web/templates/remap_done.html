@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Library remapped · media-audit{% endblock %}
+{% block content %}
+<p class="small"><a href="/scans">← Scans</a></p>
+<div class="page-head"><h1>Library remapped</h1></div>
+<section class="card">
+  <p><strong>{{ result.library }}</strong> now points at <code>{{ result.new_path }}</code>
+    (was <code>{{ result.old_path }}</code>). {{ result.files | num }} files kept their history and analysis.</p>
+  <ul class="small">
+    {% if result.merged %}<li>Merged in: {{ result.merged | join(", ") }}.</li>{% endif %}
+    {% if result.backup %}<li>Database backup: <code>{{ result.backup }}</code></li>{% endif %}
+    {% if config_changed %}<li>config.yml updated{% if config_backup %}; the old one is <code>{{ config_backup }}</code>{% endif %}.</li>{% endif %}
+  </ul>
+  <p>{% if started %}A scan has started to confirm everything is in place.{% else %}Run a scan to confirm everything is in place.{% endif %}
+    <a href="/scans">Go to Scans</a></p>
+</section>
+{% endblock %}
