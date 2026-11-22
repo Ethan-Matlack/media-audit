@@ -14,8 +14,8 @@ build/
 *.db-wal
 *.db.lock
 config.yml
+config.yml.bak-*
 docker/media/
 docker/config/*
 !docker/config/config.yml
 .env
-config.yaml
