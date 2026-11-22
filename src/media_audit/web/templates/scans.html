@@ -68,13 +68,15 @@
   <h2>Libraries</h2>
   <div class="table-wrap">
   <table class="data">
-    <thead><tr><th>Library</th><th>Folder</th><th>Type</th><th>Status</th><th class="num">Files</th><th class="num">Size</th>
+    {% set show_host = library_rows | selectattr("host_path", "ne", none) | map(attribute="host_path") | list != library_rows | map(attribute="path") | list %}
+    <thead><tr><th>Library</th><th>Folder</th>{% if show_host %}<th>On the server</th>{% endif %}<th>Type</th><th>Status</th><th class="num">Files</th><th class="num">Size</th>
       <th class="actions-col"><span class="visually-hidden">Actions</span></th></tr></thead>
     <tbody>
     {% for l in library_rows %}
       <tr class="{{ 'dim' if l.status in ('not in config', 'disabled') }}">
         <td><strong>{{ l.name }}</strong></td>
         <td class="path"><code>{{ l.path }}</code></td>
+        {% if show_host %}<td class="path">{% if l.host_path %}<code>{{ l.host_path }}</code>{% else %}<span class="muted small" title="No path mapping covers this folder; cleanup scripts leave it out">no mapping</span>{% endif %}</td>{% endif %}
         <td>{{ l.type }}</td>
         <td>{% if l.status == "ok" %}{% if l.id is none %}<span class="muted">not scanned yet</span>{% else %}<span class="status status-ok">ok</span>{% endif %}
           {% elif l.status == "missing" %}<span class="status status-failed">folder missing</span>

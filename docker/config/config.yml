@@ -37,9 +37,11 @@ scan:
 web:
   port: 8484
 
-# Cleanup scripts (Issues page): where /media and /config are on the host.
+# Cleanup scripts (Issues page) run on the server: where each mounted folder is there.
+# path_mappings:
+#   - container: /media
+#     host: /mnt/user/media
 # cleanup:
-#   host_media_path: /mnt/user/media
 #   host_config_path: /mnt/user/appdata/media-audit
 
 linking:

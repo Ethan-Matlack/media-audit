@@ -15,7 +15,7 @@ from starlette.testclient import TestClient
 
 from media_audit import cleanup
 from media_audit.classify import QUARANTINE_DIR
-from media_audit.config import CleanupConfig, Config
+from media_audit.config import CleanupConfig, Config, PathMapping
 from media_audit.db import connect
 from media_audit.pipeline import run_scan
 from media_audit.web.app import create_app
@@ -184,11 +184,20 @@ def test_refuses_when_library_folder_is_missing(
 
 
 def test_host_path_mapping() -> None:
-    c = CleanupConfig(host_media_path="/mnt/user/media/", media_mount="/media")
-    assert c.host_root("/media/tv") == "/mnt/user/media/tv"
-    assert c.host_root("/media") == "/mnt/user/media"
-    assert c.host_root("/mediaX/tv") is None and c.host_root("/data/tv") is None
-    assert CleanupConfig().host_root("/srv/tv/") == "/srv/tv"
+    legacy = Config(cleanup=CleanupConfig(host_media_path="/mnt/user/media/", media_mount="/media"))
+    assert legacy.host_path("/media/tv") == "/mnt/user/media/tv"
+    assert legacy.host_path("/media") == "/mnt/user/media"
+    assert legacy.host_path("/mediaX/tv") is None and legacy.host_path("/data/tv") is None
+    assert Config().host_path("/srv/tv/") == "/srv/tv"  # no mappings: same paths both sides
+    # Several mounts under one container folder; the longest match wins.
+    multi = Config(path_mappings=[
+        PathMapping(container="/media", host="/mnt/user/media"),
+        PathMapping(container="/media/content2", host="/mnt/disks/archive/content2"),
+    ], cleanup=CleanupConfig(host_media_path="/ignored", media_mount="/media"))  # fmt: skip
+    assert multi.host_path("/media/content1/tv") == "/mnt/user/media/content1/tv"
+    assert multi.host_path("/media/content2/tv") == "/mnt/disks/archive/content2/tv"
+    assert multi.host_path("/media/content22") == "/mnt/user/media/content22"
+    assert [m.container for m in multi.mappings()] == ["/media/content2", "/media"]
     with pytest.raises(ValueError, match="absolute"):
         CleanupConfig(host_media_path="mnt/user")
     with pytest.raises(ValueError, match="root"):
@@ -279,5 +288,5 @@ def test_ignored_issues_are_left_out(client: TestClient, lib: tuple[Any, Config,
 def test_needs_host_path_in_docker(client: TestClient, monkeypatch: Any) -> None:
     monkeypatch.setattr(cleanup, "in_docker", lambda: True)
     page = client.get("/issues/cleanup").text
-    assert "Set where your media is on the host first" in page
+    assert "Set where your media is on the server first" in page
     assert 'value="save" class="button primary" disabled' in page

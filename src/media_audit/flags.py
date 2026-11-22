@@ -88,7 +88,8 @@ def _version_list(files: Iterable[sqlite3.Row]) -> str:
 
 _FILES_SQL = """
     SELECT f.id, f.library_id, l.name AS library, l.type AS library_type, f.title_id,
-           t.kind, t.folder_path, t.name AS title_name, f.season_number, f.episode_number,
+           t.kind, t.rel_folder AS title_folder, t.name AS title_name, f.season_number,
+           f.episode_number,
            f.episode_number_end, f.rel_path, f.filename, f.ext, f.role, f.is_video,
            f.size_bytes, f.mtime_ns, f.analyzed_at, f.analyze_error, f.parent_file_id,
            v.duration_s, v.gb_per_hour, v.resolution_class, v.width, v.height, v.codec,
@@ -169,7 +170,7 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
         sizes = [g["size_bytes"] for g in group]
         out.add(first["library"], Flag(
             "duplicate_episode",
-            f"duplicate_episode:{first['library']}:{first['folder_path']}:S{season}E{ep}",
+            f"duplicate_episode:L{first['library_id']}:{first['title_folder']}:S{season}E{ep}",
             ",".join(sorted(_fp(g) for g in group)), first["library_id"],
             f"S{season:02d}E{ep:02d}: {len(group)} files ({_version_list(group)})",
             first["title_id"], None, season, {"files": [_file_summary(g) for g in group]},
@@ -181,13 +182,14 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
         group.sort(key=lambda g: g["size_bytes"], reverse=True)
         sizes = [g["size_bytes"] for g in group]
         out.add(first["library"], Flag(
-            "multi_version_movie", f"multi_version_movie:{first['library']}:{first['folder_path']}",
+            "multi_version_movie",
+            f"multi_version_movie:L{first['library_id']}:{first['title_folder']}",
             ",".join(sorted(_fp(g) for g in group)), first["library_id"],
             f"{len(group)} versions ({_version_list(group)})", first["title_id"], None, None,
             {"files": [_file_summary(g) for g in group]}, sum(sizes) - max(sizes)))  # fmt: skip
 
     titles = conn.execute(
-        "SELECT t.id, t.library_id, l.name AS library, t.kind, t.name, t.year, t.folder_path, "
+        "SELECT t.id, t.library_id, l.name AS library, t.kind, t.name, t.year, t.rel_folder, "
         "t.group_key, t.tmdb_id, t.imdb_id, t.tvdb_id FROM titles t "
         "JOIN libraries l ON l.id = t.library_id AND l.enabled = 1"
     ).fetchall()
@@ -204,8 +206,8 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
                 continue
             where = ", ".join(sorted({f"{o['library']}" for o in others}))
             out.add(t["library"], Flag(
-                "cross_library", f"cross_library:{t['library']}:{t['folder_path']}",
-                ",".join(sorted(f"{o['library']}:{o['folder_path']}" for o in others)),
+                "cross_library", f"cross_library:L{t['library_id']}:{t['rel_folder']}",
+                ",".join(sorted(f"L{o['library_id']}:{o['rel_folder']}" for o in others)),
                 t["library_id"], f"Also in {where}", t["id"],
                 data={"titles": [{"id": o["id"], "library": o["library"], "name": o["name"],
                                   "year": o["year"]} for o in others]}))  # fmt: skip
@@ -290,7 +292,7 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
         present = sorted({a for a, _ in sp})
         out.add(f["library"], Flag(
             "missing_episodes",
-            f"missing_episodes:{f['library']}:{f['folder_path']}:S{f['season_number']}",
+            f"missing_episodes:L{f['library_id']}:{f['title_folder']}:S{f['season_number']}",
             ",".join(map(str, present)), f["library_id"],
             f"Season {f['season_number']}: missing {ranges(missing)} "
             f"({len(missing)} episode{'s' if len(missing) != 1 else ''})",
@@ -319,7 +321,7 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
     for t in titles:
         if not (t["tmdb_id"] or t["imdb_id"] or t["tvdb_id"]):
             out.add(t["library"], Flag(
-                "no_ids", f"no_ids:{t['library']}:{t['folder_path']}", "", t["library_id"],
+                "no_ids", f"no_ids:L{t['library_id']}:{t['rel_folder']}", "", t["library_id"],
                 "No ID in the folder or file names", t["id"]))  # fmt: skip
 
     # ---------------------------------------------------------------- notes
@@ -331,7 +333,7 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
         mix = ", ".join(f"{c} ×{n}" for c, n in classes.most_common())
         out.add(e["library"], Flag(
             "mixed_resolution_season",
-            f"mixed_resolution_season:{e['library']}:{e['folder_path']}:S{e['season_number']}",
+            f"mixed_resolution_season:L{e['library_id']}:{e['title_folder']}:S{e['season_number']}",
             mix, e["library_id"], f"Season {e['season_number']}: {mix}", e["title_id"], None,
             e["season_number"]))  # fmt: skip
     preferred = set(config.languages.preferred_audio)
@@ -389,11 +391,8 @@ def _folder_checks(
     libs = {r["id"]: r for r in conn.execute(
         "SELECT id, name, type, path FROM libraries WHERE enabled = 1")}  # fmt: skip
     title_ids: dict[tuple[int, str], int] = {}
-    for r in conn.execute("SELECT id, library_id, folder_path FROM titles"):
-        lib = libs.get(r["library_id"])
-        root = lib["path"].rstrip("/") + "/" if lib else None
-        if root and r["folder_path"].startswith(root):
-            title_ids[(r["library_id"], r["folder_path"][len(root) :])] = r["id"]
+    for r in conn.execute("SELECT id, library_id, rel_folder FROM titles"):
+        title_ids[(r["library_id"], r["rel_folder"])] = r["id"]
 
     def is_show(lib_id: int) -> bool:
         return bool(libs[lib_id]["type"] != "movies")
@@ -431,7 +430,7 @@ def _folder_checks(
         reported[lib_id].append(top)
         lib = libs[lib_id]
         out.add(lib["name"], Flag(
-            "no_video_folder", f"no_video_folder:{lib['name']}:{top}",
+            "no_video_folder", f"no_video_folder:L{lib_id}:{top}",
             ",".join(sorted(_fp(r) for r in rows)), lib_id,
             f"{'Show' if is_show(lib_id) else 'Movie'} folder with "
             f"{_folder_summary(rows, is_show(lib_id))}",
@@ -452,7 +451,7 @@ def _folder_checks(
         if len(with_videos) > 1:
             listing = "; ".join(f"{d} ({_folder_summary(folders[d], True)})" for d in with_videos)
             out.add(lib["name"], Flag(
-                "split_season", f"split_season:{lib['name']}:{top}:S{n}",
+                "split_season", f"split_season:L{lib_id}:{top}:S{n}",
                 ",".join(f"{d}:{len(folders[d])}:{sum(r['size_bytes'] for r in folders[d])}"
                          for d in sorted(with_videos)), lib_id,
                 f"{_season_name(n)} is in {len(with_videos)} folders: {listing}",
@@ -474,7 +473,7 @@ def _folder_checks(
                 continue
             reported[lib_id].append(path)
             out.add(lib["name"], Flag(
-                "no_video_folder", f"no_video_folder:{lib['name']}:{path}",
+                "no_video_folder", f"no_video_folder:L{lib_id}:{path}",
                 ",".join(sorted(_fp(r) for r in rows)), lib_id,
                 f"{_season_name(n)} folder with {_folder_summary(rows, True)}{note}",
                 title_ids.get((lib_id, top)), None, n,
@@ -492,7 +491,7 @@ def _folder_checks(
         )
         what += twin_note.get((lib_id, rel), "")
         out.add(lib["name"], Flag(
-            "empty_folder", f"empty_folder:{lib['name']}:{rel}", "", lib_id, what,
+            "empty_folder", f"empty_folder:L{lib_id}:{rel}", "", lib_id, what,
             title_ids.get((lib_id, top)), data={"folder": rel}))  # fmt: skip
     return reported
 

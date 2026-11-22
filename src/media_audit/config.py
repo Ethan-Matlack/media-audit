@@ -117,6 +117,32 @@ class WebConfig(_Model):
     port: int = Field(default=8484, ge=1, le=65535)
 
 
+def _abs_dir(v: str, what: str = "path") -> str:
+    v = str(v).strip()
+    if not v.startswith("/"):
+        raise ValueError(f"{what} must be an absolute path, like /media/movies")
+    if not v.rstrip("/"):
+        raise ValueError(f"{what} can't be the filesystem root")
+    return v.rstrip("/")
+
+
+class PathMapping(_Model):
+    """A folder as media-audit sees it, and the same folder on the server (the host).
+
+    Only needed in Docker, for things that run on the server (cleanup scripts): e.g.
+    /media/content1 -> /mnt/user/media/content1. The longest matching ``container``
+    prefix wins, so one mapping for /media can be refined by another for /media/archive.
+    """
+
+    container: str
+    host: str
+
+    @field_validator("container", "host")
+    @classmethod
+    def _absolute(cls, v: str) -> str:
+        return _abs_dir(v)
+
+
 class CleanupConfig(_Model):
     """Cleanup scripts (Issues page). media-audit only writes the script; you run it."""
 
@@ -142,17 +168,12 @@ class CleanupConfig(_Model):
             raise ValueError("can't be the filesystem root")
         return v.rstrip("/")
 
-    def host_root(self, library_path: str) -> str | None:
-        """A library folder as the host sees it; None if it isn't under media_mount."""
-        path = library_path.rstrip("/")
+    def legacy_mapping(self) -> PathMapping | None:
+        """host_media_path/media_mount (older configs, the Unraid template's variable) as a
+        path mapping."""
         if self.host_media_path is None:
-            return path
-        mount = self.media_mount.rstrip("/")
-        if path == mount:
-            return self.host_media_path
-        if path.startswith(mount + "/"):
-            return self.host_media_path + path[len(mount) :]
-        return None
+            return None
+        return PathMapping(container=self.media_mount, host=self.host_media_path)
 
 
 class FlagsConfig(_Model):
@@ -231,10 +252,45 @@ class Config(_Model):
 
     flags: FlagsConfig = Field(default_factory=FlagsConfig)  # the Issues checks
     cleanup: CleanupConfig = Field(default_factory=CleanupConfig)
+    # Folders that hold libraries (in Docker: the media mounts). Where new folders and
+    # moved libraries are looked for, and where the Settings page browses from.
+    media_folders: list[str] = Field(default_factory=lambda: ["/media"])
+    # Container folder -> server folder, for cleanup scripts (see PathMapping).
+    path_mappings: list[PathMapping] = Field(default_factory=list)
 
     # Reserved for later phases; accepted now so configs written today keep working.
     naming: dict[str, Any] = Field(default_factory=dict)
     integrations: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("media_folders")
+    @classmethod
+    def _media_folders(cls, v: list[str]) -> list[str]:
+        return list(dict.fromkeys(_abs_dir(x, "a media folder") for x in v))
+
+    def mappings(self) -> list[PathMapping]:
+        """Explicit path mappings plus the older cleanup.host_media_path, longest first."""
+        found = list(self.path_mappings)
+        legacy = self.cleanup.legacy_mapping()
+        if legacy and all(m.container != legacy.container for m in found):
+            found.append(legacy)
+        return sorted(found, key=lambda m: len(m.container), reverse=True)
+
+    def host_path(self, path: str | Path) -> str | None:
+        """``path`` as the server sees it.
+
+        With no mappings at all, paths are the same on both sides (no container). With
+        mappings, a path that none of them covers has no known server path: None.
+        """
+        p = str(path).rstrip("/") or "/"
+        mappings = self.mappings()
+        if not mappings:
+            return p
+        for m in mappings:
+            if p == m.container:
+                return m.host
+            if p.startswith(m.container + "/"):
+                return m.host + p[len(m.container) :]
+        return None
 
     @model_validator(mode="after")
     def _unique_names(self) -> Config:

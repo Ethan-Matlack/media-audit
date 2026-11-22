@@ -140,8 +140,51 @@ uv run media-audit serve          # web UI on http://localhost:8484 + scheduled 
 | `rederive` | re-apply all rules to stored MediaInfo data; reads no media files |
 | `stats [-l LIB] [--json]` | library breakdowns |
 | `remap-library LIB --path DIR [--name NEW] [--dry-run]` | point a library at its renamed/moved folder, keeping its history |
+| `library list\|add\|set\|remove …` | change libraries in config.yml (see below) |
+| `path-mapping list\|add\|remove …` | container-to-server folder mappings for cleanup scripts |
 | `check-config` | validate config, library paths, overlaps, libmediainfo |
 | `init-config [--media-root DIR] [--force]` | write a starter config from the folders in DIR |
+
+### Several media folders
+
+Libraries don't have to share one folder. In Docker, mount each media folder **under**
+`/media` (two host folders can't share the same container path; Docker refuses):
+
+```
+/mnt/user/media/content1  ->  /media/content1
+/mnt/user/media/content2  ->  /media/content2   (on Unraid: Add another Path)
+```
+
+Libraries are then e.g. `/media/content1/movies` and `/media/content2/movies` (folder
+names can repeat; library *names* must be unique). For cleanup scripts, tell media-audit
+where each mount is on the server:
+
+```yaml
+path_mappings:
+  - container: /media/content1
+    host: /mnt/user/media/content1
+  - container: /media/content2
+    host: /mnt/user/media/content2
+```
+
+or `media-audit path-mapping add /media/content2 --host /mnt/user/media/content2`. The
+longest matching folder wins. `media_folders` (default `[/media]`) lists where
+libraries live, for finding moved libraries; add another entry if you mount media
+somewhere other than under `/media`.
+
+Everything media-audit stores about a library's files is relative to the library's
+folder, so a library can be moved, renamed or remapped without anything being read
+again, and libraries can be on different disks or mounts.
+
+### Changing the config from the command line
+
+`media-audit library list|add|set|remove` and `media-audit path-mapping list|add|remove`
+change config.yml for you: comments and layout are kept, the result is checked before
+saving, the old file is kept as `config.yml.bak-<time>`, and `--dry-run` shows the change
+without saving. Renaming a library (`library set tv --rename shows`) keeps its history.
+Settings set by `MEDIA_AUDIT_*` environment variables can't be changed this way (the
+command says which variable to change instead). The web UI's settings will work the same
+way.
 
 ### Renamed or moved library folders
 
@@ -292,11 +335,11 @@ Duplicates, unreadable files and the other checks need a decision and aren't scr
   `/mnt/user/appdata/media-audit/cleanup/` on Unraid, and shows the commands to run.
   **Download** gives you the same file. A log is written next to the script.
 
-The script runs on the host, which sees different paths than the container, so set
-`cleanup.host_media_path` to the host folder mounted at `/media`. On Unraid that's the
-**Host media path** variable: the same folder as **Media**. Until it's set, the page
-won't create a script. It needs bash and GNU coreutils/findutils (Unraid and any
-Linux server have them).
+The script runs on the server, which sees different paths than the container, so it
+needs a **path mapping** for each mounted folder (see [Several media folders](#several-media-folders)).
+On Unraid the **Host media path** variable does this for `/media`: set it to the same
+folder as **Media**. Until a mapping exists, the page won't create a script. It needs
+bash and GNU coreutils/findutils (Unraid and any Linux server have them).
 
 ## Exploring the data
 
@@ -346,6 +389,9 @@ src/media_audit/
   cron.py              cron expressions for scheduled scans
   flags.py             runs the Issues checks after each scan (rules/flags.py: the checks)
   cleanup.py           cleanup scripts for Issues (generated text; never run by media-audit)
+  remap.py             renamed/moved library folders: detection and remapping
+  settings.py          every config change (CLI, remap, web UI): ruamel.yaml, checked, backed up
+  mounts.py            the container's mount table (which media folders are mounted)
   web/                 `serve`: scan service + scheduler, Starlette app, Jinja templates,
                        static CSS/JS (no build step, no CDN)
 scripts/               fixture capture/generation, demo library
@@ -428,5 +474,5 @@ Releases up to and including 0.4.0 were published under the MIT license.
 
 Runtime dependencies, all GPL-compatible: pymediainfo (MIT) with bundled libmediainfo
 (BSD-2-Clause), PyYAML (MIT), pydantic (MIT), Starlette (BSD-3-Clause), uvicorn
-(BSD-3-Clause), Jinja2 (BSD-3-Clause), and their dependencies (anyio, h11, click, idna,
+(BSD-3-Clause), Jinja2 (BSD-3-Clause), ruamel.yaml (MIT), and their dependencies (anyio, h11, click, idna,
 MarkupSafe, typing-extensions: MIT, BSD or PSF licensed).

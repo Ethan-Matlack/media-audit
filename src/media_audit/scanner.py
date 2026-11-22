@@ -133,7 +133,6 @@ def walk(
 def _file_columns(f: FoundFile) -> dict[str, object]:
     ext = classify.extension(f.name)
     return {
-        "path": f.path,
         "rel_path": f.rel_path,
         "filename": f.name,
         "ext": ext,
@@ -167,10 +166,11 @@ def sync_library(
     if not root.is_dir():
         raise ScanError(f"library root is not a directory (is the share mounted?): {root}")
 
+    # Keyed by path relative to the library, so the library's folder can move.
     existing: dict[str, sqlite3.Row] = {
-        row["path"]: row
+        row["rel_path"]: row
         for row in conn.execute(
-            "SELECT id, path, size_bytes, mtime_ns, inode, deleted_at FROM files "
+            "SELECT id, rel_path, size_bytes, mtime_ns, dev, inode, deleted_at FROM files "
             "WHERE library_id = ?",
             (library_id,),
         )
@@ -195,9 +195,9 @@ def sync_library(
         ops = 0
         for f in walk(root, ignore, follow_symlinks, walk_result):
             stats.seen += 1
-            seen_paths.add(f.path)
+            seen_paths.add(f.rel_path)
             seen_rel.append(f.rel_path)
-            row = existing.get(f.path)
+            row = existing.get(f.rel_path)
             if row is None:
                 pending_new.append(f)
                 continue
@@ -258,24 +258,28 @@ def sync_library(
             "Use --allow-empty to override."
         )
 
-    by_identity: dict[tuple[int, int, int], sqlite3.Row] = {}
+    # The same file at a new path: same device, inode, size and mtime (the device matters
+    # when a library spans several disks or mounts, where inode numbers repeat).
+    by_identity: dict[tuple[int | None, int, int, int], sqlite3.Row] = {}
     for row in missing.values():
         if row["inode"]:
-            by_identity.setdefault((row["inode"], row["size_bytes"], row["mtime_ns"]), row)
+            key = (row["dev"], row["inode"], row["size_bytes"], row["mtime_ns"])
+            by_identity.setdefault(key, row)
 
     with transaction(conn):
         for f in pending_new:
             cols = _file_columns(f)
-            moved_from = by_identity.pop((f.inode, f.size, f.mtime_ns), None) if f.inode else None
+            identity = (f.dev, f.inode, f.size, f.mtime_ns)
+            moved_from = by_identity.pop(identity, None) if f.inode else None
             if moved_from is not None:
                 stats.moved += 1
-                missing.pop(moved_from["path"], None)
+                missing.pop(moved_from["rel_path"], None)
                 conn.execute(
-                    "UPDATE files SET path = ?, rel_path = ?, filename = ?, ext = ?, role = ?, "
+                    "UPDATE files SET rel_path = ?, filename = ?, ext = ?, role = ?, "
                     "is_video = ?, dev = ?, last_seen = ?, derived_at = NULL, "
                     "filename_parsed = NULL, title_id = NULL, season_id = NULL WHERE id = ?",
                     (
-                        cols["path"], cols["rel_path"], cols["filename"], cols["ext"],
+                        cols["rel_path"], cols["filename"], cols["ext"],
                         cols["role"], cols["is_video"], cols["dev"], now, moved_from["id"],
                     ),
                 )  # fmt: skip
@@ -283,11 +287,11 @@ def sync_library(
                 continue
             stats.new += 1
             conn.execute(
-                "INSERT INTO files (library_id, path, rel_path, filename, ext, role, is_video, "
+                "INSERT INTO files (library_id, rel_path, filename, ext, role, is_video, "
                 "size_bytes, mtime_ns, dev, inode, first_seen, last_seen, changed_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    library_id, cols["path"], cols["rel_path"], cols["filename"], cols["ext"],
+                    library_id, cols["rel_path"], cols["filename"], cols["ext"],
                     cols["role"], cols["is_video"], cols["size_bytes"], cols["mtime_ns"],
                     cols["dev"], cols["inode"], now, now, now,
                 ),

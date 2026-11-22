@@ -454,7 +454,7 @@ def create_app(service: ScanService) -> Starlette:
         in_docker = cleanup.in_docker()
         return {
             "cfg": cfg, "plan": plan, "filters": filters, "in_docker": in_docker,
-            "needs_host_path": in_docker and cfg.cleanup.host_media_path is None,
+            "needs_host_path": in_docker and not cfg.mappings(),
             "saved": cleanup.saved_scripts(cleanup.scripts_dir(cfg)),
             "disclaimer": cleanup.DISCLAIMER,
         }  # fmt: skip
