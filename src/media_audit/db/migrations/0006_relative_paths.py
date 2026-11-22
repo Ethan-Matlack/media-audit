@@ -191,6 +191,9 @@ def _backup(conn: sqlite3.Connection) -> None:
     finally:
         dest.close()
     log.info("database backed up to %s before moving to relative paths", target)
+    from media_audit.backups import DB_BACKUPS, prune
+
+    prune(path.parent, f"{path.name}.bak-0006-*", DB_BACKUPS)
 
 
 def _rel(path: str | None, root: str) -> str | None:

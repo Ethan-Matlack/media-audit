@@ -115,13 +115,6 @@
   });
 
   // ------------------------------------------------------------ settings
-  for (const b of $$("[data-cron]")) {
-    b.addEventListener("click", () => {
-      const input = document.getElementById(b.dataset.target);
-      if (input) { input.value = b.dataset.cron; input.focus(); }
-    });
-  }
-
   // Folder picker: browse the media folders and pick one for a library.
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const guessType = (name) => (/movie|film/i.test(name) ? "movies" : /tv|show|series|anime/i.test(name) ? "tv" : "");
@@ -178,6 +171,93 @@
       // A folder that can't be browsed (e.g. outside the media folders): start at the top.
       if (!(await openPicker(b, start)) && start) await openPicker(b, "");
     });
+  }
+
+  // Path mappings: add as many rows as needed.
+  for (const b of $$("[data-add-mapping]")) {
+    b.addEventListener("click", () => {
+      const tpl = $("[data-mapping-template]");
+      const rows = $("[data-mapping-rows]");
+      if (!tpl || !rows) return;
+      rows.appendChild(tpl.content.cloneNode(true));
+      const inputs = $$("input", rows);
+      inputs[inputs.length - 2]?.focus();
+    });
+  }
+
+  // Settings tabs: show one tab's sections at a time. The links also work without this.
+  const tabs = $$('[role="tablist"] [data-tab]');
+  function showTab(key, focus) {
+    const tab = tabs.find((t) => t.dataset.tab === key);
+    if (!tab) return false;
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+    }
+    for (const p of $$("[data-tab-panel]")) p.hidden = p.dataset.tabPanel !== key;
+    if (focus) tab.focus();
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", key);
+    for (const k of ["saved", "msg", "backup", "rescan", "restart"]) url.searchParams.delete(k);
+    url.hash = "";
+    history.replaceState(null, "", url);
+    return true;
+  }
+  for (const t of tabs) {
+    t.addEventListener("click", (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      showTab(t.dataset.tab, false);
+    });
+    t.addEventListener("keydown", (e) => {
+      const i = tabs.indexOf(t);
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+      if (next === undefined) return;
+      e.preventDefault();
+      showTab(tabs[(next + tabs.length) % tabs.length].dataset.tab, true);
+    });
+  }
+  // A link to a section (e.g. /settings#languages) opens its tab.
+  if (tabs.length && window.location.hash) {
+    const target = document.getElementById(decodeURIComponent(window.location.hash.slice(1)));
+    const panel = target && target.closest("[data-tab-panel]");
+    if (panel && panel.hidden) {
+      for (const p of $$("[data-tab-panel]")) p.hidden = p.dataset.tabPanel !== panel.dataset.tabPanel;
+      for (const t of tabs) {
+        const on = t.dataset.tab === panel.dataset.tabPanel;
+        t.setAttribute("aria-selected", on ? "true" : "false");
+        t.tabIndex = on ? 0 : -1;
+      }
+      target.scrollIntoView({ block: "start" });
+    }
+  }
+
+  // Pop-up messages: close with ×, or on their own after a while (paused while the
+  // pointer or focus is on them). One with an action (e.g. Scan now) waits to be closed.
+  for (const toast of $$("[data-toast]")) {
+    const dismiss = () => {
+      toast.classList.add("leaving");
+      setTimeout(() => toast.remove(), 220);
+    };
+    toast.querySelector("[data-toast-close]")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      dismiss();
+    });
+    const ms = Number(toast.dataset.timeout || 0);
+    if (ms > 0) {
+      let timer = setTimeout(dismiss, ms);
+      const pause = () => clearTimeout(timer);
+      const resume = () => { clearTimeout(timer); timer = setTimeout(dismiss, 2500); };
+      toast.addEventListener("mouseenter", pause);
+      toast.addEventListener("focusin", pause);
+      toast.addEventListener("mouseleave", resume);
+      toast.addEventListener("focusout", resume);
+    }
+    // Reloading the page shouldn't show the message again.
+    const url = new URL(window.location.href);
+    for (const k of ["saved", "msg", "backup", "rescan", "restart"]) url.searchParams.delete(k);
+    history.replaceState(null, "", url);
   }
 
   function bindResults() {

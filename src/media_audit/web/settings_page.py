@@ -93,6 +93,25 @@ def browse(cfg: Config, path: str | None) -> dict[str, Any]:
     return {"path": _norm(path), "parent": parent, "folders": folders}
 
 
+def _file_locations(config_path: Path | None, cfg: Config) -> list[dict[str, str | None]]:
+    """The config file and database as full paths inside the container, and on the server
+    when the app-data folder's server path (cleanup.host_config_path) is known."""
+    host_root = cfg.cleanup.host_config_path
+    out = []
+    for label, path in (("Config file", config_path), ("Database", cfg.database)):
+        if path is None:
+            continue
+        full = Path(path).absolute()  # not resolve(): keep the path as mounted, not symlink targets
+        host = None
+        if host_root:
+            try:
+                host = f"{host_root}/{full.relative_to('/config')}"
+            except ValueError:
+                host = None
+        out.append({"label": label, "path": str(full), "host": host})
+    return out
+
+
 def settings_routes(
     service: ScanService,
     db: Any,
@@ -143,13 +162,20 @@ def settings_routes(
         return {
             "cfg": cfg, "sections": sf.SECTIONS, "value": value, "locked": locked,
             "check_groups": sf.check_groups(cfg), "all_checks": list(CHECKS.values()),
-            "presets": sf.SCHEDULE_PRESETS, "libraries": libraries,
+            "libraries": libraries,
             "found": found_folders(cfg), "mappings": explicit,
-            "legacy_mapping": legacy if legacy and (legacy.container, legacy.host)
-            not in explicit else None,
+            # The mapping from cleanup.host_media_path: shown as a locked row, unless a
+            # mapping in the list for the same folder takes its place.
+            "legacy_mapping": legacy if legacy and all(c != legacy.container
+                                                       for c, _ in explicit) else None,
+            "legacy_source": st.locked("cleanup.host_media_path"),
             "suggested_mounts": suggested, "in_docker": Path("/.dockerenv").exists(),
             "saved": q.get("saved"), "message": q.get("msg"), "backup": q.get("backup"),
+            "tabs": sf.TABS, "tab_of": sf.TAB_OF,
+            "active_tab": sf.tab_for(extra.get("error_section"), q.get("tab"), q.get("saved")),
             "rescan": q.get("rescan") == "1",
+            "restart": q.get("restart") == "1",
+            "files": _file_locations(service.config_path, cfg),
             **extra,
         }  # fmt: skip
 
@@ -202,12 +228,15 @@ def settings_routes(
             log.exception("recomputing issues after a settings change failed")
         db.clear()
 
-    def done(anchor: str, message: str, backup: Path | None, *, rescan: bool = False) -> Response:
-        params = {"saved": anchor, "msg": message}
+    def done(anchor: str, message: str, backup: Path | None, *, rescan: bool = False,
+             restart: bool = False) -> Response:  # fmt: skip
+        params = {"tab": sf.tab_for(anchor), "saved": anchor, "msg": message}
         if backup is not None:
             params["backup"] = backup.name
         if rescan:
             params["rescan"] = "1"
+        if restart:
+            params["restart"] = "1"
         return RedirectResponse(f"/settings?{urlencode(params)}#{anchor}", status_code=303)
 
     def save(change: Any) -> Path | None:
@@ -244,8 +273,7 @@ def settings_routes(
         after_save({k.split(".")[0] for k in changes})
         labels = [f.label for f in section.fields if f.key in changes]
         restart = any(f.restart for f in section.fields if f.key in changes)
-        note = " Restart the container for this to take effect." if restart else ""
-        return done(key, f"Saved: {', '.join(labels)}.{note}", backup)
+        return done(key, f"Saved: {', '.join(labels)}.", backup, restart=restart)
 
     async def section_post(request: Request) -> Response:
         if not same_origin(request):

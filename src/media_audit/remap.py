@@ -28,6 +28,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from media_audit.backups import DB_BACKUPS, prune
 from media_audit.config import Config
 from media_audit.db import get_meta, set_meta, transaction
 from media_audit.settings import Change, ConfigStore, SettingsError, yaml_text
@@ -68,6 +69,7 @@ def backup_database(conn: sqlite3.Connection, db_path: Path, now: datetime) -> P
         conn.backup(dest)
     finally:
         dest.close()
+    prune(db_path.parent, f"{db_path.name}.bak-remap-*", DB_BACKUPS)
     return target
 
 

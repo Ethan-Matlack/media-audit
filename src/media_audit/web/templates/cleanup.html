@@ -19,16 +19,13 @@
 {% if needs_host_path %}
 <div class="notice notice-error" role="alert">
   <strong>Set where your media is on the server first.</strong> media-audit runs in a container, so it sees your
-  media at different paths than the server does, and the script runs on the server. Add a path mapping for each
-  media folder you mounted, in <code>{{ config_path }}</code>:
-  <pre class="command">path_mappings:
-  - container: /media
-    host: /mnt/user/media</pre>
-  (On Unraid the <strong>Host media path</strong> variable does this for <code>/media</code>.) No restart needed.
+  media at different paths than the server does, and the script runs on the server. Set the server path for your
+  media folders in <a href="/settings?tab=folders">Settings → Media folders</a> (on Unraid, the
+  <strong>Host media path</strong> variable does this for <code>/media</code>). No restart needed.
 </div>
 {% endif %}
 {% if plan.unmapped %}
-<div class="notice notice-error">Left out: {{ plan.unmapped | join(", ") }}. No path mapping covers their folders, so their path on the server is unknown. Add one to <code>path_mappings</code>.</div>
+<div class="notice notice-error">Left out: {{ plan.unmapped | join(", ") }}. No path mapping covers their folders, so their path on the server is unknown. Add one in <a href="/settings?tab=folders">Settings → Media folders</a>.</div>
 {% endif %}
 
 <section class="card">

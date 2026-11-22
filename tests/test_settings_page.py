@@ -140,7 +140,16 @@ def test_scanning_and_other_sections(setup: dict[str, Any]) -> None:
                                                    "linking.by_name_year": "1"})  # fmt: skip
     assert _config(setup).linking.by_id is False
     r = client.post("/settings/section/web", data={"web.port": "9000", "web.host": "0.0.0.0"})
-    assert "Restart the container" in r.text and _config(setup).web.port == 9000
+    assert _config(setup).web.port == 9000
+    saved = r.text.split('class="toast"')[1].split("</a>")[0]
+    assert "↻</span> Restart required for this change to take effect" in saved
+    assert 'class="badge quiet">restart' not in r.text
+    # The same marker sits under each setting that needs a restart, and nowhere else.
+    web = r.text.split('id="web"')[1].split("</section>")[0]
+    assert web.count("Restart required for this change to take effect") == 2  # the 2 fields
+    r = client.post("/settings/section/linking", data={"linking.by_id": "1"})
+    saved = r.text.split('class="toast"')[1].split("</a>")[0]
+    assert "Restart required" not in saved
 
 
 def test_issue_checks(setup: dict[str, Any]) -> None:
@@ -269,3 +278,120 @@ def test_saving_a_section_unchanged_changes_nothing(setup: dict[str, Any]) -> No
         r = _post(client, f"/settings/section/{key}", pairs)
         assert r.status_code == 200 and "Nothing changed." in r.text, (key, r.text[-2000:])
     assert setup["cfg"].read_text() == before
+
+
+def test_container_mapping_shows_as_a_locked_row(setup: dict[str, Any], monkeypatch: Any) -> None:
+    client, media = setup["client"], setup["media"]
+    monkeypatch.setenv("MEDIA_AUDIT_CLEANUP__HOST_MEDIA_PATH", "/mnt/user/media/content")
+    monkeypatch.setenv("MEDIA_AUDIT_CLEANUP__MEDIA_MOUNT", str(media))
+    page = client.get("/settings").text
+    folders = page.split('id="folders"')[1].split("</section>")[0]
+    locked_row = folders.split('class="locked-row"')[1].split("</tr>")[0]
+    assert f'value="{media}" disabled' in locked_row
+    assert 'value="/mnt/user/media/content" disabled' in locked_row
+    assert "MEDIA_AUDIT_CLEANUP__HOST_MEDIA_PATH" in folders and "Host media path" in folders
+    assert (
+        "Usually there&#39;s nothing to add" in folders
+        or "Usually there's nothing to add" in folders
+    )
+    assert "data-add-mapping" in folders and "<template data-mapping-template>" in folders
+
+    # Saving the section doesn't copy the container's mapping into config.yml.
+    r = _post(client, "/settings/folders", [("media_folders", str(media)),
+                                            ("map_container", ""), ("map_host", "")])  # fmt: skip
+    assert r.status_code == 200 and "path_mappings" not in setup["cfg"].read_text()
+
+    # A mapping of your own for the same folder replaces it (and the locked row goes).
+    own = [("media_folders", str(media)), ("map_container", str(media)), ("map_host", "/mnt/other")]
+    _post(client, "/settings/folders", own)
+    folders = client.get("/settings").text.split('id="folders"')[1].split("</section>")[0]
+    assert 'class="locked-row"' not in folders
+    assert _config(setup).host_path(media / "movies") == "/mnt/other/movies"
+
+
+def test_schedule_empty_or_off_turns_it_off(setup: dict[str, Any]) -> None:
+    client = setup["client"]
+    client.post("/settings/section/scanning", data={"scan.schedule": "0 4 * * *"})
+    assert _config(setup).scan.schedule == "0 4 * * *"
+    client.post("/settings/section/scanning", data={"scan.schedule": ""})
+    assert _config(setup).scan.schedule is None
+    client.post("/settings/section/scanning", data={"scan.schedule": "30 2 * * 1"})
+    client.post("/settings/section/scanning", data={"scan.schedule": "OFF"})
+    assert _config(setup).scan.schedule is None
+    page = client.get("/settings").text
+    assert "minute hour day-of-month month day-of-week" in page and "data-cron" not in page
+
+
+def _visible(page: str) -> set[str]:
+    """Section ids whose panel isn't hidden."""
+    import re
+
+    return {m.group(1) for m in re.finditer(
+        r'<section class="card settings-section" id="([^"]+)"[^>]*?(?<!hidden)>', page)
+        if "hidden" not in m.group(0)}  # fmt: skip
+
+
+def test_tabs(setup: dict[str, Any]) -> None:
+    client = setup["client"]
+    page = client.get("/settings").text
+    assert _visible(page) == {"libraries"}
+    assert 'data-tab="libraries"\n     aria-controls="panel-libraries" aria-selected="true"' in page
+    assert _visible(client.get("/settings?tab=general").text) == {
+        "linking", "languages", "cleanup", "web", "about"}  # fmt: skip
+    assert _visible(client.get("/settings?tab=nonsense").text) == {"libraries"}
+    # A save lands back on its own tab; a failed one shows its tab with the error.
+    r = client.post("/settings/section/languages", data={"languages.preferred_audio": "de"})
+    assert "tab=general" in str(r.url) and _visible(r.text) == {
+        "linking", "languages", "cleanup", "web", "about"}  # fmt: skip
+    r = client.post("/settings/section/issues", data={"flags.min_peers": "1"})
+    assert r.status_code == 400 and _visible(r.text) == {"issues"}
+
+
+def test_file_locations(setup: dict[str, Any], tmp_path: Path, monkeypatch: Any) -> None:
+    from media_audit.config import Config
+    from media_audit.web.settings_page import _file_locations
+
+    page = setup["client"].get("/settings?tab=general").text
+    about = page.split('id="about"')[1].split("</section>")[0]
+    assert (
+        f"<code>{setup['cfg']}</code>" in about and "Full paths as media-audit sees them" in about
+    )
+    # Relative paths are shown in full; with the app-data folder's server path known, the
+    # server path is shown too.
+    monkeypatch.chdir(tmp_path)
+    cfg = Config(database=Path("db/m.db"))
+    rows = _file_locations(Path("config.yml"), cfg)
+    assert [r["path"] for r in rows] == [str(tmp_path / "config.yml"), str(tmp_path / "db/m.db")]
+    assert all(r["host"] is None for r in rows)
+    cfg = Config(database=Path("/config/media-audit.db"),
+                 cleanup={"host_config_path": "/mnt/user/appdata/media-audit"})  # fmt: skip
+    rows = _file_locations(Path("/config/config.yml"), cfg)
+    appdata = "/mnt/user/appdata/media-audit"
+    assert [r["host"] for r in rows] == [f"{appdata}/config.yml", f"{appdata}/media-audit.db"]
+
+
+def test_no_placeholder_text_in_forms() -> None:
+    """Labels and help text explain every field; placeholders vanish once you type."""
+    from importlib import resources
+
+    templates = resources.files("media_audit.web") / "templates"
+    for t in templates.iterdir():
+        if t.name.endswith(".html"):
+            assert "placeholder=" not in t.read_text(), t.name
+
+
+def test_saved_message_is_a_pop_up(setup: dict[str, Any]) -> None:
+    client, media = setup["client"], setup["media"]
+    r = client.post("/settings/section/linking", data={"linking.by_id": "0"})
+    toast = r.text.split('<div class="toasts">')[1].split("</a>")[0]
+    assert 'data-timeout="6000"' in toast and "Saved: Link by ID." in toast
+    assert '<a class="toast-close" href="/settings?tab=general"' in r.text  # works without JS
+    assert "Saved: Link by ID." not in r.text.split('<div class="toasts">')[0]  # not inline too
+    # One with an action waits for you to close it.
+    add = {"action": "add", "name": "anime", "path": str(media / "anime"), "type": "tv"}
+    r = client.post("/settings/libraries", data=add)
+    toast = r.text.split('<div class="toasts">')[1].split("</a>")[0]
+    assert 'data-timeout="0"' in toast and "Scan now" in toast
+    # Errors stay inline, next to their section.
+    r = client.post("/settings/section/scanning", data={"scan.workers": "99"})
+    assert '<div class="toasts">' not in r.text and "between 1 and 32" in r.text

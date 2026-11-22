@@ -131,6 +131,12 @@ uv run media-audit stats
 uv run media-audit serve          # web UI on http://localhost:8484 + scheduled scans
 ```
 
+The config is found in this order: `-c path/to/config.yml`, then the
+`MEDIA_AUDIT_CONFIG` variable, then `config.yml` in the current folder, then
+`/config/config.yml` (the Docker image sets `MEDIA_AUDIT_CONFIG=/config/config.yml`).
+Relative paths in the config, such as `database: media-audit.db`, are relative to the
+config file. The database, its backups and saved cleanup scripts all end up next to it.
+
 ## Commands
 
 | command | does |
@@ -180,7 +186,7 @@ again, and libraries can be on different disks or mounts.
 
 `media-audit library list|add|set|remove` and `media-audit path-mapping list|add|remove`
 change config.yml for you: comments and layout are kept, the result is checked before
-saving, the old file is kept as `config.yml.bak-<time>`, and `--dry-run` shows the change
+saving, the old file is kept as `config.yml.bak-<time>` (the newest 5 are kept), and `--dry-run` shows the change
 without saving. Renaming a library (`library set tv --rename shows`) keeps its history.
 Settings set by `MEDIA_AUDIT_*` environment variables can't be changed this way (the
 command says which variable to change instead). The web UI's settings will work the same
@@ -197,7 +203,8 @@ library and a new one, and read every file again. Instead:
   comments and layout are kept) and then **Remap**: the library points at the new folder
   (and name, if you change it), its stored paths move with it, history, analysis and
   ignored issues are kept, and a quick scan confirms it. The database and config.yml are
-  backed up first (`*.bak-…` next to them). Any library can be remapped by hand from
+  backed up first (`*.bak-…` next to them; the newest 2 database backups of each kind and 5
+  config backups are kept). Any library can be remapped by hand from
   the **Libraries** list on the same page; **It's a different library** hides a wrong
   suggestion.
 * **Same name, new path:** change `path:` in the config and the next scan follows the
@@ -249,7 +256,8 @@ config file:
   on or off, thresholds, expected file types) and the **web UI** port.
 
 Changes are written to config.yml, keeping its comments and layout, and checked before
-they're saved. The previous version is kept as `config.yml.bak-<time>`. They apply
+they're saved. The previous version is kept as `config.yml.bak-<time>`; only the newest 5
+are kept, so they don't pile up. They apply
 straight away (issues are recalculated and the schedule refreshed). Only the web UI's
 port and address need a restart. Settings set by `MEDIA_AUDIT_*` environment variables
 (e.g. in the Unraid template) are shown but locked, with the variable named.
@@ -430,37 +438,98 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy
 ```
 
+**Running the web UI locally:** keep everything it writes in `.dev/` (git-ignored), the
+same way the container keeps it in `/config`:
+
+```sh
+mkdir -p .dev
+cat > .dev/config.yml <<'YAML'
+database: media-audit.db   # .dev/media-audit.db
+libraries: []              # or real libraries; set them up in Settings
+scan:
+  schedule: off
+YAML
+export MEDIA_AUDIT_CONFIG=.dev/config.yml
+uv run media-audit serve   # http://localhost:8484
+```
+
+To work on real data, copy a database from the server to `.dev/media-audit.db`. Pages
+that read the media folders (scans, the folder browser) need the media too;
+`scripts/make_demo_library.sh` builds a small fake library for that. Templates, CSS
+and JS changes show on a browser refresh; Python changes need a restart.
+
 ### CI and releases
 
 [.github/workflows/docker.yml](.github/workflows/docker.yml) builds the Docker test
 image and runs lint, mypy and the full test suite (with real MediaInfo and ffmpeg) on
-every pull request and push, then publishes the runtime image to GHCR using the
-built-in `GITHUB_TOKEN`:
+every pull request and push. Pull requests only run the tests. Pushes then publish the
+runtime image to GHCR (using the built-in `GITHUB_TOKEN`):
 
-| Push to | Publishes | Shows as |
-|---|---|---|
-| `dev` branch | `:dev` and `:sha-<commit>` | `0.4.0-dev (abc1234)` |
-| `main` | `:latest` and `:sha-<commit>` | `0.4.0` |
-| tag `v0.4.0` | `:0.4.0` and `:0.4` | `0.4.0` |
+| You push | Image tags | Built from | Shows as (footer, banner, `/healthz`) |
+|---|---|---|---|
+| a commit to `dev` | `:dev`, `:sha-<commit>` | the newest commit on `dev` | `0.8.0-dev (3e63404)` |
+| a merge into `main` | `:latest`, `:sha-<commit>` | the newest commit on `main` (the merge commit) | `0.8.0`, build `main · e6cfb0f` |
+| a tag `v0.8.0` | `:0.8.0`, `:0.8` | the tagged commit | `0.8.0`, build `release · 3e63404` |
 
-Pull requests run the tests but never publish. The version and build (channel and
-commit) appear in the start-up banner, the web UI footer and `/healthz`.
+Each push is its own build, and each build is its own image, even from the same code:
+the build type (`dev`, `main`, `release`) and commit are stamped into the image, so the
+images differ.
 
-**Workflow:** commit to `dev` day to day (every push updates `:dev`). Merge `dev` into
-`main` when it's ready, which updates `:latest`. Then release:
+#### Day to day and releasing
 
-1. Bump `__version__` in [src/media_audit/__init__.py](src/media_audit/__init__.py), the
-   one place the version lives (`pyproject.toml` reads it from there). Versions are
-   plain `X.Y.Z`: `X.Y.Z+1` for fixes, `X.Y+1.0` for features.
-2. Commit and push to `main`.
-3. `git tag v0.4.0 && git push origin v0.4.0`. CI refuses a tag that doesn't match
-   `__version__`.
+1. **Work on `dev`.** Every push updates `:dev`. Leave the version alone between
+   releases.
+2. **When it's ready, bump the version on `dev`** in
+   [src/media_audit/__init__.py](src/media_audit/__init__.py), the one place it lives
+   (`pyproject.toml` reads it from there). Versions are plain `X.Y.Z`: `X.Y.Z+1` for
+   fixes, `X.Y+1.0` for features. Commit and push.
+3. **Open a pull request `dev` → `main`**, wait for the green check, and merge it with
+   *Create a merge commit*. That publishes `:latest`.
+4. **Tag `main`:**
+   ```sh
+   git checkout main && git pull
+   git tag v0.8.0 && git push origin v0.8.0
+   ```
+   CI refuses a tag that doesn't match `__version__`, so a forgotten bump can't be
+   published under the wrong number.
+5. **Bring `dev` level with `main`** (it's one merge commit behind after step 3):
+   ```sh
+   git checkout dev && git pull && git merge --ff-only main && git push
+   ```
+
+Tags only ever point at one commit, so make them on `main` after merging, never on
+`dev` before. A merge adds a new commit, so a tag made on `dev` points at a different
+commit than `:latest`. Squash or rebase merges create new commits too, and a tag on
+`dev` would then point at a commit `main` doesn't contain. Never move a tag once it's
+been pushed: bump to the next version instead.
+
+#### Reading the GHCR package page
+
+The page lists **images**, newest first, with their tags. What you'll see after a
+release, and why it's expected:
+
+- **`:latest` is a separate entry from `:0.8.0`,** with a different commit: `:latest` is
+  built from the merge commit on `main`, the tag from the commit you tagged. The code
+  is the same (a merge from `dev` changes no files when `main` has nothing of its own);
+  the images differ only in their build stamp. Tagging `main` after the merge (step 4)
+  makes them share a commit.
+- **`:dev` can sit just below `:0.8.0` and look older,** when the `dev` push and the tag
+  push build the same commit at the same time and the dev build finishes first. It's
+  the same code; check the commit in the footer or `/healthz`.
+- **Only one entry shows `sha-<commit>`** when two builds come from the same commit: the
+  tag goes to whichever image was pushed last.
+- **Older dev builds** keep their `sha-` tag after `:dev` moves on. *View all versions*
+  shows them. A quick push after another can cancel the first build (only the newest
+  commit on a branch is built), so not every commit gets an image.
+
+#### One-time setup
 
 - **First publish:** the package starts out private. Make it public (GitHub →
   Packages → media-audit → Package settings → Change visibility) so Unraid can pull it
   without a login.
-- **Protect `main`** (GitHub → Settings → Branches → add a rule for `main`, require the
-  `test` status check) so a failing build can't reach `:latest`.
+- **Protect `main`** (GitHub → Settings → Branches → add a rule for `main`: require a
+  pull request and the `test` status check), so a failing build can't reach `:latest`
+  and nothing lands on `main` except through a PR from `dev`.
 
 #### Trying dev builds on Unraid
 
