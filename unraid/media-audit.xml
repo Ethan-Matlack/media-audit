@@ -22,7 +22,7 @@
   <WebUI>http://[IP]:[PORT:8484]/</WebUI>
   <Changes>
 ### 0.8.1
-- The Scan schedule and Scan workers container variables are gone: set them under Settings → Scanning (no lock icon, no container edit). Remove them from an existing container (Edit, then remove the two variables) so they stop overriding the settings.
+- The Scan schedule, Scan workers and Host appdata path container variables are gone: set them in the web UI under Settings (Scanning, and General → Cleanup scripts). Remove them from an existing container (Edit, then remove the three variables) so they stop overriding the settings.
 
 ### 0.8.0
 - Settings page: set up everything from the web UI (libraries with a folder browser, scanning, schedule, linking, languages, Issues checks, media folders and server paths) without editing config.yml.
@@ -66,5 +66,4 @@
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the scanner runs as (99 = nobody)." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID the scanner runs as (100 = users)." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
   <Config Name="Host media path (cleanup scripts)" Target="MEDIA_AUDIT_CLEANUP__HOST_MEDIA_PATH" Default="/mnt/user/media" Mode="" Description="Set this to the same folder as Media above. Cleanup scripts (Issues page) run on the server, not in the container, and use it to find your libraries. If you add more media paths (mount them under /media, e.g. /media/archive), add a path mapping for each: see the README. media-audit itself never writes to your media." Type="Variable" Display="always" Required="false" Mask="false">/mnt/user/media</Config>
-  <Config Name="Host appdata path (cleanup scripts)" Target="MEDIA_AUDIT_CLEANUP__HOST_CONFIG_PATH" Default="/mnt/user/appdata/media-audit" Mode="" Description="Set this to the same folder as Config above. Only used to show the command for running a saved cleanup script." Type="Variable" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/media-audit</Config>
 </Container>
