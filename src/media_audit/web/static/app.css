@@ -353,3 +353,61 @@ dl.facts dd { margin: 0; }
 pre.diff .add { color: var(--good); }
 pre.diff .del { color: var(--bad); }
 pre.diff .hunk { color: var(--text-3); }
+
+/* ---------------------------------------------------------------- settings */
+.settings-nav { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; margin-bottom: 1rem; font-size: 0.9rem; }
+.settings-section { scroll-margin-top: 4.5rem; }
+.settings-section h3 { margin: 1.25rem 0 0.4rem; font-size: 1rem; }
+.settings-form { display: flex; flex-direction: column; gap: 0.75rem; max-width: 52rem; }
+.settings-form label:not(.check) { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; color: var(--text-2); }
+.settings-form input[type="text"], .settings-form input[type="number"], .settings-form textarea, .settings-form select {
+  font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.35rem 0.5rem; max-width: 100%;
+}
+.settings-form input[type="number"] { width: 9rem; }
+.settings-form textarea { font-family: var(--mono); font-size: 0.85rem; }
+.settings-form input:disabled, .settings-form textarea:disabled, .settings-form select:disabled { opacity: 0.6; }
+.field { display: flex; flex-direction: column; gap: 0.25rem; }
+.field-label { font-size: 0.85rem; color: var(--text-2); }
+.field-row { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: flex-end; }
+.field-row label:not(.check) { flex: 1 1 12rem; }
+label.check { display: flex; flex-direction: row; align-items: center; gap: 0.45rem; font-size: 0.9rem; color: var(--text); }
+.help { margin: 0; font-size: 0.82rem; color: var(--text-3); }
+.locked { margin: 0; color: var(--warn); }
+.presets { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.check-group { border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.75rem 0.6rem; margin: 0.25rem 0; }
+.check-group legend { font-size: 0.8rem; color: var(--text-2); padding: 0 0.3rem; }
+.check-group label.check, .check-grid label.check { font-size: 0.86rem; padding: 0.1rem 0; }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0 1rem; padding: 0.4rem 0; }
+.folder-input { display: flex; gap: 0.4rem; }
+.folder-input input { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.85rem; }
+.picker {
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+  margin-top: 0.3rem; padding: 0.4rem; max-height: 20rem; overflow-y: auto;
+}
+.picker-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.2rem 0.3rem 0.4rem; border-bottom: 1px solid var(--border); margin-bottom: 0.3rem; }
+.picker-head code { overflow-wrap: anywhere; }
+.picker ul { list-style: none; margin: 0; padding: 0; }
+.picker li button { all: unset; display: flex; justify-content: space-between; gap: 0.5rem; width: 100%; box-sizing: border-box; padding: 0.25rem 0.4rem; border-radius: 4px; cursor: pointer; font-size: 0.88rem; }
+.picker li button:hover, .picker li button:focus-visible { background: var(--surface-2); }
+.picker .tag { color: var(--text-3); font-size: 0.78rem; }
+details.library { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 0.5rem; }
+details.library > summary {
+  display: grid; grid-template-columns: minmax(9rem, 1fr) minmax(0, 2.2fr) auto auto; gap: 0.3rem 1rem;
+  align-items: center; padding: 0.55rem 0.8rem; cursor: pointer; list-style: none;
+}
+details.library > summary::-webkit-details-marker { display: none; }
+details.library[open] > summary { border-bottom: 1px solid var(--border); background: var(--surface-2); }
+details.library .lib-path code { overflow-wrap: anywhere; }
+details.library .lib-edit { color: var(--accent-ink); font-size: 0.88rem; }
+details.library > form { padding: 0.75rem 0.8rem 0; }
+details.library > form.remove-form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding-bottom: 0.75rem; }
+.button.danger { color: var(--bad); border-color: var(--bad); }
+ul.found { list-style: none; padding: 0; margin: 0; }
+ul.found li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 1rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+table.mappings input { width: 100%; font-family: var(--mono); font-size: 0.85rem; }
+table.mappings tr.suggested input:first-child { color: var(--accent-ink); }
+@media (max-width: 640px) {
+  details.library > summary { grid-template-columns: 1fr auto; }
+  details.library .lib-path { grid-column: 1 / -1; order: 3; }
+}

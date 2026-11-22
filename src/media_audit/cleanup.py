@@ -68,7 +68,7 @@ class Section:
 class Plan:
     sections: list[Section]
     roots: list[tuple[str, str]]  # (library name, folder on the host), index + 1 = ROOT_n
-    unmapped: list[str]  # libraries whose folder isn't under cleanup.media_mount
+    unmapped: list[str]  # libraries no path mapping covers (their server path is unknown)
     skipped_paths: int  # paths refused while generating (shouldn't happen)
     scan_finished: str | None
 
@@ -127,7 +127,7 @@ def build_plan(conn: sqlite3.Connection, config: Config, where: str = "1 = 1",
     def root_of(r: sqlite3.Row) -> int | None:
         if r["library_id"] in roots:
             return roots[r["library_id"]]
-        host = config.cleanup.host_root(r["library_path"])
+        host = config.host_path(r["library_path"])
         if host is None:
             unmapped.add(r["library"])
             return None
@@ -260,7 +260,7 @@ def save_script(text: str, directory: Path, name: str) -> Path:
 
 
 def in_docker() -> bool:
-    """Inside a container the host's paths differ, so cleanup.host_media_path is needed."""
+    """Inside a container the host's paths differ, so path mappings are needed."""
     return Path("/.dockerenv").exists()
 
 
@@ -343,7 +343,7 @@ export LC_ALL=C
 
 STAMP={stamp}
 QUARANTINE={quarantine}
-# Library folders on this machine (cleanup.host_media_path in media-audit's config).
+# Library folders on this machine (path_mappings in media-audit's config).
 {roots}
 VIDEO_FIND=( {video_find} )
 
@@ -445,7 +445,7 @@ for n in {root_numbers}; do
   r=$(root "$n")
   if [ -z "$r" ] || [ "$r" = / ] || [ ! -d "$r" ]; then
     echo "Stopped before doing anything: library folder '$r' isn't a folder on this machine." >&2
-    echo "Set cleanup.host_media_path in media-audit's config (where its /media folder is" >&2
+    echo "Set path_mappings in media-audit's config (where each mounted folder is" >&2
     echo "on the host), generate a new script, and run that one." >&2
     exit 1
   fi

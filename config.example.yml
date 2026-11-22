@@ -73,13 +73,25 @@ flags:
 
 # Cleanup scripts (Issues page -> Cleanup script). media-audit only writes the script; you
 # review it and run it on the host. These tell the script where things are on the host.
+# Folders that hold your libraries (in Docker: where media folders are mounted). Moved
+# libraries and new folders are looked for here, and the web UI browses from here.
+media_folders: [/media]
+
+# Only in Docker, for cleanup scripts (which run on the server): where each folder
+# media-audit sees is on the server. The longest matching folder wins, so several mounts
+# can live under one container folder, e.g. /media/content1 and /media/content2.
+# path_mappings:
+#   - container: /media
+#     host: /mnt/user/media/content
+#   - container: /media/archive
+#     host: /mnt/disks/archive
+
 cleanup:
-  # Where media-audit's media_mount folder is on the host. Leave unset outside Docker
-  # (the library paths are already right); in Docker the script refuses to run without it.
-  # host_media_path: /mnt/user/media
-  media_mount: /media
   # Where /config is on the host. Only used to show the command for a saved script.
   # host_config_path: /mnt/user/appdata/media-audit
+  # Older form of a path mapping for /media (still works; the Unraid template sets it):
+  # host_media_path: /mnt/user/media
+  media_mount: /media
 
 # Reserved for later phases (naming rules, Radarr/Sonarr integrations).
 naming: {}

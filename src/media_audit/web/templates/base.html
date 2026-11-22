@@ -17,6 +17,7 @@
     <a href="/files" {% if nav == "files" %}aria-current="page"{% endif %}>Files</a>
     <a href="/issues" {% if nav in ("issues", "cleanup", "cleanup_saved") %}aria-current="page"{% endif %}>Issues{% if issue_count %} <span class="count" title="{{ issue_count }} errors and warnings">{{ issue_count | num }}</span>{% endif %}</a>
     <a href="/scans" {% if nav in ("scans", "remap", "remap_done") %}aria-current="page"{% endif %}>Scans</a>
+    <a href="/settings" {% if nav == "settings" %}aria-current="page"{% endif %}>Settings</a>
   </nav>
   <a class="status-pill" href="/scans" id="status-pill" data-running="{{ 'true' if status.scan.running else 'false' }}">
     {% if status.scan.running %}
@@ -39,8 +40,8 @@
   {% endif %}
   {% if first_start %}
   <div class="notice">
-    <strong>A config was just created</strong> at <code>{{ config_path }}</code> from the folders under your media
-    folder. Check the library list and types (edit the file if needed; no restart required), then
+    <strong>A config was just created</strong> from the folders under your media folder. Check the libraries and
+    their types in <a href="/settings#libraries">Settings</a>, then
     <form method="post" action="/scans/run" class="inline"><button type="submit" class="link">scan now</button></form>.
   </div>
   {% endif %}

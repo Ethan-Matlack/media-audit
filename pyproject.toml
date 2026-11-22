@@ -20,6 +20,7 @@ classifiers = [
 #   starlette    BSD-3-Clause  (web UI; pulls in anyio, MIT)
 #   uvicorn      BSD-3-Clause  (pulls in h11 MIT, click BSD-3-Clause)
 #   Jinja2       BSD-3-Clause  (pulls in MarkupSafe BSD-3-Clause)
+#   ruamel.yaml  MIT   (edits config.yml keeping comments; pure Python)
 dependencies = [
     "pymediainfo>=6.1,<8",
     "PyYAML>=6.0,<7",
@@ -27,6 +28,7 @@ dependencies = [
     "starlette>=0.40,<1",
     "uvicorn>=0.30,<1",
     "Jinja2>=3.1,<4",
+    "ruamel.yaml>=0.18,<0.20",
 ]
 
 [project.scripts]

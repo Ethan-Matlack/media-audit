@@ -122,7 +122,7 @@ def test_full_scan(setup: tuple[Path, Path, Path, Config]) -> None:
     loose_show = titles[("tv", "Loose Show")]
     (season,) = conn.execute("SELECT * FROM seasons WHERE title_id = ?",
                              (loose_show["title_id"],)).fetchall()  # fmt: skip
-    assert season["season_number"] == 1 and season["folder_path"] is None
+    assert season["season_number"] == 1 and season["rel_folder"] is None
     ep = conn.execute(
         "SELECT season_number, episode_number FROM files WHERE filename LIKE '%S01E02%'"
     ).fetchone()
@@ -165,7 +165,8 @@ def test_rescan_is_incremental(setup: tuple[Path, Path, Path, Config]) -> None:
     (movies / "Loose Movie (1999).nfo").unlink()
     old = movies / "Heat (1995)/Heat (1995) [Bluray-2160p][DV].mkv"
     new = movies / "Heat (1995)/Heat (1995) {tmdb-949} [Bluray-2160p][DV][HEVC].mkv"
-    old_id = conn.execute("SELECT id FROM files WHERE path = ?", (str(old),)).fetchone()[0]
+    old_rel = str(old.relative_to(movies))
+    old_id = conn.execute("SELECT id FROM files WHERE rel_path = ?", (old_rel,)).fetchone()[0]
     old.rename(new)
 
     s = _scan(conn, cfg, analyzer)
@@ -174,7 +175,7 @@ def test_rescan_is_incremental(setup: tuple[Path, Path, Path, Config]) -> None:
     assert analyzer.calls[str(new)] == 0
 
     moved = conn.execute("SELECT * FROM files WHERE id = ?", (old_id,)).fetchone()
-    assert moved["path"] == str(new)
+    assert moved["rel_path"] == str(new.relative_to(movies))
     assert conn.execute("SELECT 1 FROM file_mediainfo WHERE file_id = ?", (old_id,)).fetchone()
     assert json.loads(moved["filename_parsed"])["tmdb_id"] == "949"
     assert conn.execute("SELECT dv_profile FROM video_info WHERE file_id = ?",
@@ -298,7 +299,7 @@ def test_name_year_never_joins_conflicting_ids(tmp_path: Path) -> None:
         (6, 2, "Heat", None),
     ]  # fmt: skip
     conn.executemany(
-        "INSERT INTO titles (id, library_id, kind, name, year, tmdb_id, folder_path, updated_at) "
+        "INSERT INTO titles (id, library_id, kind, name, year, tmdb_id, rel_folder, updated_at) "
         "VALUES (?, ?, 'movie', ?, 2012, ?, 'f' || ?, 'now')",
         [(*r, r[0]) for r in rows],
     )

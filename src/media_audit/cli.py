@@ -176,6 +176,79 @@ def cmd_remap_library(args: argparse.Namespace) -> int:
     return 0
 
 
+def _settings_change(args: argparse.Namespace, make: Any) -> int:
+    """Prepare a config change with the settings service, show it, and save it."""
+    from media_audit.config import find_config_path
+    from media_audit.settings import ConfigStore, SettingsError
+
+    try:
+        store = ConfigStore(find_config_path(args.config))
+        change = make(store)
+        if not change.changed:
+            print("nothing to change")
+            return 0
+        print("\n".join(change.diff()))
+        if getattr(args, "dry_run", False):
+            print("dry run: config.yml not changed")
+            return 0
+        cfg = store.config()
+        conn = _open_db(cfg) if change.renames and cfg.database.exists() else None
+        backup = store.save(change, conn=conn)
+    except SettingsError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"{change.summary}. Saved; the old config is {backup}")
+    return 0
+
+
+def cmd_library(args: argparse.Namespace) -> int:
+    if args.action == "list":
+        cfg = _load(args)
+        for lib in cfg.libraries:
+            host = cfg.host_path(lib.path)
+            server = f"  (server: {host})" if host and host != str(lib.path).rstrip("/") else ""
+            state = "on " if lib.enabled else "off"
+            print(f"{lib.name:<20} {lib.type:<7} {state}  {lib.path}{server}")
+        return 0
+    if args.action == "add":
+        if not (args.path and args.type):
+            print("error: library add needs --path and --type", file=sys.stderr)
+            return 2
+        return _settings_change(args, lambda st: st.add_library(args.name, args.path, args.type))
+    if args.action == "remove":
+        return _settings_change(args, lambda st: st.remove_library(args.name))
+    enabled = {"on": True, "off": False}.get(args.enabled or "")
+    return _settings_change(
+        args,
+        lambda st: st.update_library(
+            args.name, new_name=args.rename, path=args.path, lib_type=args.type, enabled=enabled
+        ),
+    )
+
+
+def cmd_path_mapping(args: argparse.Namespace) -> int:
+    cfg = _load(args)
+    current = [(m.container, m.host) for m in cfg.path_mappings]
+    if args.action == "list":
+        for m in cfg.mappings():
+            legacy = (m.container, m.host) not in current
+            print(
+                f"{m.container}  ->  {m.host}" + ("  (cleanup.host_media_path)" if legacy else "")
+            )
+        if not cfg.mappings():
+            print("no path mappings: paths are the same in media-audit and on the server")
+        return 0
+    if args.action == "add":
+        if not args.host:
+            print("error: path-mapping add needs --host", file=sys.stderr)
+            return 2
+        new = [m for m in current if m[0] != args.container.rstrip("/")]
+        new.append((args.container, args.host))
+    else:
+        new = [m for m in current if m[0] != args.container.rstrip("/")]
+    return _settings_change(args, lambda st: st.set_path_mappings(new))
+
+
 def _print_table(
     title: str, rows: list[dict[str, Any]], total_files: int, with_bytes: bool = True
 ) -> None:
@@ -375,6 +448,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--name", help="a new name for the library (default: unchanged)")
     p.add_argument("--dry-run", action="store_true", help="check and show, change nothing")
     p.set_defaults(func=cmd_remap_library)
+
+    p = sub.add_parser("library", help="list, add, change or remove libraries in config.yml")
+    p.add_argument("action", choices=["list", "add", "set", "remove"])
+    p.add_argument("name", nargs="?", default="", help="the library (not for list)")
+    p.add_argument("--path", help="its folder (add, set)")
+    p.add_argument("--type", choices=["movies", "tv"], help="add, set")
+    p.add_argument("--rename", help="set: a new name (its history is kept)")
+    p.add_argument("--enabled", choices=["on", "off"], help="set")
+    p.add_argument("--dry-run", action="store_true", help="show the change, don't save it")
+    p.set_defaults(func=cmd_library)
+
+    p = sub.add_parser(
+        "path-mapping", help="map container folders to server folders (for cleanup scripts)"
+    )
+    p.add_argument("action", choices=["list", "add", "remove"])
+    p.add_argument("container", nargs="?", default="", help="folder as media-audit sees it")
+    p.add_argument("--host", help="add: the same folder on the server")
+    p.add_argument("--dry-run", action="store_true", help="show the change, don't save it")
+    p.set_defaults(func=cmd_path_mapping)
 
     p = sub.add_parser("stats", help="print library statistics")
     p.add_argument("-l", "--library", help="only this library")

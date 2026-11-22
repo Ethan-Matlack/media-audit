@@ -114,6 +114,72 @@
     }
   });
 
+  // ------------------------------------------------------------ settings
+  for (const b of $$("[data-cron]")) {
+    b.addEventListener("click", () => {
+      const input = document.getElementById(b.dataset.target);
+      if (input) { input.value = b.dataset.cron; input.focus(); }
+    });
+  }
+
+  // Folder picker: browse the media folders and pick one for a library.
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const guessType = (name) => (/movie|film/i.test(name) ? "movies" : /tv|show|series|anime/i.test(name) ? "tv" : "");
+  async function openPicker(button, path) {
+    const input = document.getElementById(button.dataset.browse);
+    const box = $(`[data-picker-for="${button.dataset.browse}"]`);
+    if (!input || !box) return false;
+    box.hidden = false;
+    box.innerHTML = '<p class="muted small">Loading…</p>';
+    let data;
+    try {
+      const res = await fetch("/settings/browse" + (path ? "?path=" + encodeURIComponent(path) : ""));
+      data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+    } catch (err) {
+      box.innerHTML = `<p class="error small">${esc(err.message)}</p>`;
+      return false;
+    }
+    const nav = data.parent
+      ? '<button type="button" class="button small-button" data-up>Up</button>'
+      : '<button type="button" class="button small-button" data-top>Media folders</button>';
+    const head = data.path
+      ? `<div class="picker-head"><code>${esc(data.path)}</code><span>${nav}
+           <button type="button" class="button primary small-button" data-use>Use this folder</button></span></div>`
+      : '<div class="picker-head"><span class="muted small">Media folders</span></div>';
+    const items = data.folders.map((f, i) => {
+      const tag = f.library ? "library " + esc(f.library) : f.type ? f.type + "?" : "";
+      return `<li><button type="button" data-i="${i}"><span>📁 ${esc(f.name)}</span><span class="tag">${tag}</span></button></li>`;
+    }).join("");
+    box.innerHTML = head + (items ? `<ul>${items}</ul>` : '<p class="muted small">No folders inside.</p>');
+    for (const b of $$("li button", box)) {
+      b.addEventListener("click", () => openPicker(button, data.folders[Number(b.dataset.i)].path));
+    }
+    $("[data-up]", box)?.addEventListener("click", () => openPicker(button, data.parent));
+    $("[data-top]", box)?.addEventListener("click", () => openPicker(button, ""));
+    $("[data-use]", box)?.addEventListener("click", () => {
+      input.value = data.path;
+      const name = data.path.split("/").filter(Boolean).pop() || "";
+      const nameInput = document.getElementById(button.dataset.nameTarget || "");
+      if (nameInput && !nameInput.value) nameInput.value = name;
+      const typeSelect = document.getElementById(button.dataset.typeTarget || "");
+      if (typeSelect && guessType(name)) typeSelect.value = guessType(name);
+      box.hidden = true;
+      input.focus();
+    });
+    return true;
+  }
+  for (const b of $$("[data-browse]")) {
+    b.addEventListener("click", async () => {
+      const input = document.getElementById(b.dataset.browse);
+      const box = $(`[data-picker-for="${b.dataset.browse}"]`);
+      if (box && !box.hidden) { box.hidden = true; return; }
+      const start = input && input.value.startsWith("/") ? input.value : "";
+      // A folder that can't be browsed (e.g. outside the media folders): start at the top.
+      if (!(await openPicker(b, start)) && start) await openPicker(b, "");
+    });
+  }
+
   function bindResults() {
     const results = $("#results");
     if (!results) return;

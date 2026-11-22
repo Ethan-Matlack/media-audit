@@ -13,7 +13,7 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-_MIGRATION_NAME = re.compile(r"^(\d{4})_[a-z0-9_]+\.sql$")
+_MIGRATION_NAME = re.compile(r"^(\d{4})_[a-z0-9_]+\.(sql|py)$")
 
 
 class MigrationError(Exception):
@@ -80,7 +80,9 @@ def _migrations() -> list[tuple[int, str, str]]:
     for entry in pkg.iterdir():
         m = _MIGRATION_NAME.match(entry.name)
         if m:
-            found.append((int(m.group(1)), entry.name, entry.read_text(encoding="utf-8")))
+            # Python migrations are run by name (see apply_migrations), not read as text.
+            text = entry.read_text(encoding="utf-8") if m.group(2) == "sql" else ""
+            found.append((int(m.group(1)), entry.name, text))
     found.sort()
     versions = [v for v, _, _ in found]
     if versions != list(range(1, len(versions) + 1)):
@@ -115,6 +117,21 @@ def apply_migrations(conn: sqlite3.Connection) -> list[str]:
     applied = []
     for version, name, sql in migrations:
         if version <= current:
+            continue
+        if name.endswith(".py"):
+            # For changes SQL alone can't do safely (e.g. rebuilding a table with foreign
+            # keys off). The module's migrate(conn) runs outside a transaction, manages its
+            # own, and must set schema_version itself as part of its final commit.
+            import importlib
+
+            module = importlib.import_module(f"media_audit.db.migrations.{name[:-3]}")
+            try:
+                module.migrate(conn, version)
+            except Exception as exc:
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
+                raise MigrationError(f"migration {name} failed: {exc}") from exc
+            applied.append(name)
             continue
         script = (
             "BEGIN IMMEDIATE;\n"

@@ -86,17 +86,16 @@ def sync_libraries(conn: sqlite3.Connection, config: Config, now: str) -> dict[s
 
     Libraries removed from the config are disabled, not deleted, so their history stays.
     """
-    from media_audit.remap import norm, rewrite_root
+    from media_audit.remap import norm
 
     with transaction(conn):
         known = {r["name"]: r for r in conn.execute("SELECT id, name, path FROM libraries")}
         for lib in config.libraries:
-            # Same library, new folder (renamed or moved): keep its files and history.
+            # Same library, new folder: stored paths are relative to the library, so only
+            # the library's own folder changes; its files and history carry over.
             row = known.get(lib.name)
             if row is not None and norm(row["path"]) != norm(lib.path):
-                moved = rewrite_root(conn, row["id"], row["path"], str(lib.path))
-                log.info("library %s moved from %s to %s (%d files kept)",
-                         lib.name, row["path"], lib.path, moved)  # fmt: skip
+                log.info("library %s moved from %s to %s", lib.name, row["path"], lib.path)
             conn.execute(
                 "INSERT INTO libraries (name, path, type, enabled, created_at) "
                 "VALUES (?, ?, ?, ?, ?) ON CONFLICT (name) DO UPDATE SET path = excluded.path, "
@@ -155,11 +154,13 @@ def analyze_pending(
     and :class:`ScanCancelled` is raised. The next scan picks up the rest.
     """
     sql = (
-        "SELECT id, path, size_bytes, mtime_ns FROM files WHERE deleted_at IS NULL "
-        f"AND is_video = 1 AND library_id IN ({','.join('?' * len(library_ids))}) AND "
-        + ("(analyzed_at IS NULL OR analyze_error IS NOT NULL)" if retry_errors
-           else "analyzed_at IS NULL")
-        + " ORDER BY path"
+        # The full path is built here, from the library's current folder.
+        "SELECT f.id, l.path || '/' || f.rel_path AS path, f.size_bytes, f.mtime_ns "
+        "FROM files f JOIN libraries l ON l.id = f.library_id WHERE f.deleted_at IS NULL "
+        f"AND f.is_video = 1 AND f.library_id IN ({','.join('?' * len(library_ids))}) AND "
+        + ("(f.analyzed_at IS NULL OR f.analyze_error IS NOT NULL)" if retry_errors
+           else "f.analyzed_at IS NULL")
+        + " ORDER BY l.name, f.rel_path"
     )  # fmt: skip
     rows = conn.execute(sql, library_ids).fetchall()
     total = len(rows)
@@ -317,7 +318,7 @@ def run_scan(
             derive_pending(conn, utcnow(), scanned_ids)
             for lib in libs:
                 if ids[lib.name] in scanned_ids:
-                    resolve_library(conn, ids[lib.name], str(lib.path), lib.type, utcnow())
+                    resolve_library(conn, ids[lib.name], lib.type, utcnow())
             link_titles(conn, config.linking)
             if progress:
                 progress(ProgressEvent("checking", "checking for issues"))
@@ -361,7 +362,7 @@ def rederive(conn: sqlite3.Connection, config: Config) -> int:
     count = derive_pending(conn, now)
     for lib in config.libraries:
         if lib.name in ids:
-            resolve_library(conn, ids[lib.name], str(lib.path), lib.type, utcnow())
+            resolve_library(conn, ids[lib.name], lib.type, utcnow())
     link_titles(conn, config.linking)
     compute_flags(conn, config)
     return count

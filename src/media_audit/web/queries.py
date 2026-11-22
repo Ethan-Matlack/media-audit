@@ -292,7 +292,8 @@ def titles(conn: sqlite3.Connection, q: Mapping[str, str]) -> Page:
 
 def title_detail(conn: sqlite3.Connection, title_id: int) -> dict[str, Any] | None:
     title = conn.execute(
-        "SELECT t.*, l.name AS library, l.type AS library_type FROM titles t "
+        "SELECT t.*, l.name AS library, l.type AS library_type, "
+        "l.path || '/' || t.rel_folder AS folder_path FROM titles t "
         "JOIN libraries l ON l.id = t.library_id WHERE t.id = ?",
         (title_id,),
     ).fetchone()
@@ -310,7 +311,7 @@ def title_detail(conn: sqlite3.Connection, title_id: int) -> dict[str, Any] | No
         )
     seasons = _rows(
         conn.execute(
-            "SELECT season_number, episode_count, folder_size_bytes AS bytes, folder_path "
+            "SELECT season_number, episode_count, folder_size_bytes AS bytes, rel_folder "
             "FROM seasons WHERE title_id = ? ORDER BY season_number IS NULL, season_number",
             (title_id,),
         )
@@ -808,7 +809,7 @@ _ISSUE_SELECT = """
     SELECT fl.id, fl.code, fl.severity, fl.key, fl.title_id, fl.file_id, fl.season_number,
            fl.message, fl.data, fl.bytes_recoverable, l.name AS library,
            t.name AS title_name, t.year AS title_year, t.kind AS title_kind,
-           t.folder_path AS title_path, l.path AS library_path,
+           t.rel_folder AS title_folder,
            f.rel_path AS file_path, f.size_bytes AS file_size,
            (ig.key IS NOT NULL) AS ignored
     FROM flags fl
@@ -822,9 +823,6 @@ _ISSUE_SELECT = """
 def _issue_row(r: sqlite3.Row) -> dict[str, Any]:
     row = dict(r)
     row["data"] = json.loads(row["data"]) if row["data"] else None
-    # The title's folder relative to the library, so paths can be shown relative to it.
-    root, title = (row.pop("library_path") or "").rstrip("/"), row.pop("title_path") or ""
-    row["title_folder"] = title[len(root) + 1 :] if root and title.startswith(root + "/") else None
     return row
 
 

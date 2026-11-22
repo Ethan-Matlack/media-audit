@@ -38,12 +38,12 @@ _SUBS_FOLDERS = frozenset({"subs", "subtitles", "sub"})
 
 @dataclass
 class _TitleAcc:
-    folder_path: str
+    rel_folder: str  # relative to the library; for a loose file, the file itself
     folder_name: str | None  # None for loose files
     kind: str
     file_ids: list[int] = field(default_factory=list)
     main_parsed: list[dict[str, object]] = field(default_factory=list)
-    # season number -> (folder_path or None, file ids)
+    # season number -> (rel_folder or None, file ids)
     seasons: dict[int | None, tuple[str | None, list[int]]] = field(default_factory=dict)
 
 
@@ -62,9 +62,7 @@ def _stem(name: str) -> str:
     return name[: -(len(ext) + 1)] if ext else name
 
 
-def resolve_library(
-    conn: sqlite3.Connection, library_id: int, root: str, library_type: str, now: str
-) -> None:
+def resolve_library(conn: sqlite3.Connection, library_id: int, library_type: str, now: str) -> None:
     """Rebuild titles/seasons for one library and assign title_id/season_id to files."""
     kind = "movie" if library_type == "movies" else "show"
     rows = conn.execute(
@@ -72,11 +70,10 @@ def resolve_library(
         "FROM files WHERE library_id = ? AND deleted_at IS NULL",
         (library_id,),
     ).fetchall()
-    root = root.rstrip("/")
 
     titles: dict[str, _TitleAcc] = {}
     # Loose files in a movies root: group by stem of the video they belong to.
-    loose_videos: dict[str, str] = {}  # dir-less stem -> title folder_path (the video path)
+    loose_videos: dict[str, str] = {}  # dir-less stem -> title rel_folder (the video path)
     loose_others: list[sqlite3.Row] = []
 
     for row in rows:
@@ -84,7 +81,7 @@ def resolve_library(
         parsed = json.loads(row["filename_parsed"]) if row["filename_parsed"] else None
         if len(parts) == 1:
             if row["is_video"] and row["role"] == "main":
-                path = f"{root}/{row['rel_path']}"
+                path = row["rel_path"]
                 acc = titles.setdefault(path, _TitleAcc(path, None, kind))
                 acc.file_ids.append(row["id"])
                 if parsed:
@@ -97,7 +94,7 @@ def resolve_library(
             continue
 
         folder = parts[0]
-        path = f"{root}/{folder}"
+        path = folder
         acc = titles.setdefault(path, _TitleAcc(path, folder, kind))
         acc.file_ids.append(row["id"])
         if row["is_video"] and row["role"] == "main" and parsed:
@@ -122,9 +119,9 @@ def resolve_library(
 
     with transaction(conn):
         existing = {
-            r["folder_path"]: r["id"]
+            r["rel_folder"]: r["id"]
             for r in conn.execute(
-                "SELECT id, folder_path FROM titles WHERE library_id = ?", (library_id,)
+                "SELECT id, rel_folder FROM titles WHERE library_id = ?", (library_id,)
             )
         }
         keep: set[int] = set()
@@ -136,7 +133,7 @@ def resolve_library(
             if title_id is None:
                 cur = conn.execute(
                     "INSERT INTO titles (library_id, kind, name, year, tmdb_id, imdb_id, "
-                    "tvdb_id, folder_path, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "tvdb_id, rel_folder, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (library_id, kind, name, year, ids.get("tmdb"), ids.get("imdb"),
                      ids.get("tvdb"), path, now),
                 )  # fmt: skip
@@ -163,14 +160,14 @@ def resolve_library(
                     sid = existing_seasons.get(number)
                     if sid is None:
                         cur = conn.execute(
-                            "INSERT INTO seasons (title_id, season_number, folder_path) "
+                            "INSERT INTO seasons (title_id, season_number, rel_folder) "
                             "VALUES (?, ?, ?)",
                             (title_id, number, season_dir),
                         )
                         sid = int(cur.lastrowid or 0)
                     else:
                         conn.execute(
-                            "UPDATE seasons SET folder_path = ? WHERE id = ?", (season_dir, sid)
+                            "UPDATE seasons SET rel_folder = ? WHERE id = ?", (season_dir, sid)
                         )
                     keep_seasons.add(sid)
                     for fid in ids_in_season:
@@ -230,7 +227,7 @@ def _title_identity(acc: _TitleAcc) -> tuple[str, int | None, dict[str, str]]:
         if year is None and years:
             year = years.most_common(1)[0][0]
     if name is None:
-        name = acc.folder_name or PurePosixPath(acc.folder_path).name
+        name = acc.folder_name or PurePosixPath(acc.rel_folder).name
     return name, year, ids
 
 

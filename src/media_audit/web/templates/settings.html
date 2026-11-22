@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}Settings · media-audit{% endblock %}
+
+{% macro folder_input(name, value, id, name_target="", type_target="", required=false, disabled=false) %}
+<span class="folder-input">
+  <input type="text" name="{{ name }}" id="{{ id }}" value="{{ value }}" placeholder="/media/movies" {% if required %}required{% endif %} {% if disabled %}disabled{% endif %} autocomplete="off" spellcheck="false">
+  <button type="button" class="button" data-browse="{{ id }}" {% if name_target %}data-name-target="{{ name_target }}"{% endif %} {% if type_target %}data-type-target="{{ type_target }}"{% endif %} {% if disabled %}disabled{% endif %}>Browse…</button>
+</span>
+<div class="picker" data-picker-for="{{ id }}" hidden></div>
+{% endmacro %}
+
+{% macro type_select(name, value, id="", disabled=false) %}
+<select name="{{ name }}" {% if id %}id="{{ id }}"{% endif %} {% if disabled %}disabled{% endif %}>
+  <option value="movies" {% if value == "movies" %}selected{% endif %}>Movies</option>
+  <option value="tv" {% if value == "tv" %}selected{% endif %}>TV shows</option>
+</select>
+{% endmacro %}
+
+{% macro locked_note(key) %}{% if locked.get(key) %}<p class="locked small">🔒 Set by the environment variable <code>{{ locked[key] }}</code> (e.g. in the container's settings), so it can't be changed here.</p>{% endif %}{% endmacro %}
+
+{% macro section_error(key) %}{% if error and error_section == key %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}{% endmacro %}
+
+{% macro saved_note(key) %}{% if saved == key and message %}
+<div class="notice" role="status">{{ message }}{% if backup %} <span class="muted small">The previous config is kept as <code>{{ backup }}</code>.</span>{% endif %}
+  {% if rescan %}<form method="post" action="/scans/run" class="inline"><button type="submit" class="button primary small-button">Scan now</button></form>{% endif %}
+</div>{% endif %}{% endmacro %}
+
+{% block content %}
+<div class="page-head"><h1>Settings</h1></div>
+
+{% if broken %}
+<div class="notice notice-error" role="alert">The settings can't be shown: {{ broken }}</div>
+{% else %}
+<p class="muted small">Changes are saved to <code>{{ config_path }}</code> (comments and layout are kept, and the
+  previous version is kept next to it as <code>config.yml.bak-…</code>). They apply straight away; no restart is
+  needed unless a setting says so.</p>
+
+<nav class="settings-nav" aria-label="Settings sections">
+  <a href="#libraries">Libraries</a><a href="#folders">Media folders</a>
+  {% for s in sections %}<a href="#{{ s.key }}">{{ s.title.split(" ")[0] }}</a>{% endfor %}
+</nav>
+
+{# ------------------------------------------------------------------ libraries #}
+<section class="card settings-section" id="libraries">
+  <h2>Libraries</h2>
+  {{ saved_note("libraries") }}{{ section_error("libraries") }}{{ locked_note("libraries") }}
+  {% set lib_locked = locked.get("libraries") %}
+
+  {% for l in libraries %}
+  <details class="library" {% if open_library == l.name %}open{% endif %}>
+    <summary>
+      <span class="lib-name"><strong>{{ l.name }}</strong> <span class="muted small">{{ "Movies" if l.type == "movies" else "TV shows" }}</span></span>
+      <span class="lib-path"><code>{{ l.path }}</code>{% if l.host_path and l.host_path != l.path %}<span class="muted small"> · server: {{ l.host_path }}</span>{% endif %}</span>
+      <span class="lib-status">
+        {% if not l.configured %}<span class="muted">removed</span>
+        {% elif not l.enabled %}<span class="muted">off</span>
+        {% elif l.status == "missing" %}<span class="status status-failed">folder missing</span>
+        {% elif l.id is none %}<span class="muted">not scanned yet</span>
+        {% else %}<span class="status status-ok">{{ l.files | num }} file{{ "s" if l.files != 1 }} · {{ l.bytes | bytes }}</span>{% endif %}
+      </span>
+      <span class="lib-edit">{{ "Add back…" if not l.configured else "Edit" }}</span>
+    </summary>
+    {% if l.configured %}
+    <form method="post" action="/settings/libraries" class="settings-form">
+      <input type="hidden" name="action" value="update"><input type="hidden" name="name" value="{{ l.name }}">
+      <div class="field-row">
+        <label>Name <input type="text" name="new_name" value="{{ l.name }}" required {% if lib_locked %}disabled{% endif %}></label>
+        <label>Type {{ type_select("type", l.type, disabled=lib_locked) }}</label>
+        <label class="check"><input type="checkbox" name="enabled" value="1" {% if l.enabled %}checked{% endif %} {% if lib_locked %}disabled{% endif %}> Scan this library</label>
+      </div>
+      <label>Folder {{ folder_input("path", l.path, "path-" ~ loop.index, disabled=lib_locked) }}</label>
+      <p class="help">Renaming keeps the library's history. If the folder was renamed on disk, the <a href="/scans#libraries">Scans page</a> can also find it for you.</p>
+      <details class="checks-off">
+        <summary>Checks switched off for this library{% if l.off %} <span class="muted small">({{ l.off | length }})</span>{% endif %}</summary>
+        <div class="check-grid">
+          {% for c in all_checks %}<label class="check"><input type="checkbox" name="off" value="{{ c.code }}" {% if c.code in l.off %}checked{% endif %} {% if lib_locked %}disabled{% endif %}> {{ c.heading }}</label>{% endfor %}
+        </div>
+      </details>
+      <div class="actions"><button type="submit" class="button primary" {% if lib_locked %}disabled{% endif %}>Save</button></div>
+    </form>
+    <form method="post" action="/settings/libraries" class="remove-form">
+      <input type="hidden" name="action" value="remove"><input type="hidden" name="name" value="{{ l.name }}">
+      <label class="check small"><input type="checkbox" name="confirm" value="1" required {% if lib_locked %}disabled{% endif %}> Remove <strong>{{ l.name }}</strong> from media-audit (nothing on disk is touched; its history is kept but hidden)</label>
+      <button type="submit" class="button danger" {% if lib_locked %}disabled{% endif %}>Remove</button>
+    </form>
+    {% else %}
+    <form method="post" action="/settings/libraries" class="settings-form">
+      <input type="hidden" name="action" value="add"><input type="hidden" name="name" value="{{ l.name }}">
+      <input type="hidden" name="type" value="{{ l.type }}">
+      <p class="help">This library isn't in the config any more; media-audit still has its history. Add it back to use it again.</p>
+      <label>Folder {{ folder_input("path", l.path, "path-r" ~ loop.index, disabled=lib_locked) }}</label>
+      <div class="actions"><button type="submit" class="button" {% if lib_locked %}disabled{% endif %}>Add back</button></div>
+    </form>
+    {% endif %}
+  </details>
+  {% else %}
+  <p>No libraries yet. Add one below, or pick from the folders found in your media folders.</p>
+  {% endfor %}
+
+  {% if found and not lib_locked %}
+  <h3>Found in your media folders</h3>
+  <p class="help">Folders that aren't libraries yet. The type is a guess from the name.</p>
+  <ul class="found">
+    {% for f in found %}
+    <li>
+      <span><strong>{{ f.name }}</strong><br><code class="muted small">{{ f.path }}</code></span>
+      <form method="post" action="/settings/libraries" class="inline">
+        <input type="hidden" name="action" value="add"><input type="hidden" name="name" value="{{ f.name }}"><input type="hidden" name="path" value="{{ f.path }}">
+        <button type="submit" name="type" value="movies" class="button small-button {{ 'primary' if f.type == 'movies' }}">Add as movies</button>
+        <button type="submit" name="type" value="tv" class="button small-button {{ 'primary' if f.type == 'tv' }}">Add as TV</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h3>Add a library</h3>
+  <form method="post" action="/settings/libraries" class="settings-form">
+    <input type="hidden" name="action" value="add">
+    <div class="field-row">
+      <label>Name <input type="text" name="name" id="add-name" placeholder="movies" required {% if lib_locked %}disabled{% endif %}></label>
+      <label>Type {{ type_select("type", "movies", "add-type", disabled=lib_locked) }}</label>
+    </div>
+    <label>Folder {{ folder_input("path", "", "add-path", "add-name", "add-type", required=true, disabled=lib_locked) }}</label>
+    <div class="actions"><button type="submit" class="button primary" {% if lib_locked %}disabled{% endif %}>Add library</button></div>
+  </form>
+</section>
+
+{# ------------------------------------------------------------------ media folders #}
+<section class="card settings-section" id="folders">
+  <h2>Media folders</h2>
+  {{ saved_note("folders") }}{{ section_error("folders") }}
+  <form method="post" action="/settings/folders" class="settings-form">
+    <label>Folders that hold your libraries
+      <textarea name="media_folders" rows="{{ [cfg.media_folders | length + 1, 3] | max }}" {% if locked.get("media_folders") %}disabled{% endif %}>{{ cfg.media_folders | join("\n") }}</textarea></label>
+    {{ locked_note("media_folders") }}
+    <p class="help">One per line, as media-audit sees them (in Docker: where media is mounted, usually <code>/media</code>).
+      The folder browser starts here, and moved libraries are looked for here.</p>
+
+    <h3>Paths on the server</h3>
+    <p class="help">{% if in_docker %}media-audit runs in a container, so its folders have different paths on the server.{% endif %}
+      Cleanup scripts run on the server, so they need to know where each folder is there. The longest matching
+      folder wins, so several mounts under <code>/media</code> can each have their own.</p>
+    {% if legacy_mapping %}<p class="small">From the <strong>Host media path</strong> variable (<code>cleanup.host_media_path</code>):
+      <code>{{ legacy_mapping.container }}</code> → <code>{{ legacy_mapping.host }}</code></p>{% endif %}
+    {% set map_locked = locked.get("path_mappings") %}
+    <div class="table-wrap">
+    <table class="data mappings">
+      <thead><tr><th>Folder in media-audit</th><th>Same folder on the server</th></tr></thead>
+      <tbody>
+      {% for c, h in mappings %}<tr><td><input type="text" name="map_container" value="{{ c }}" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" value="{{ h }}" {% if map_locked %}disabled{% endif %}></td></tr>{% endfor %}
+      {% for m in suggested_mounts %}<tr class="suggested"><td><input type="text" name="map_container" value="{{ m }}" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" value="" placeholder="mounted here, but no server path yet" {% if map_locked %}disabled{% endif %}></td></tr>{% endfor %}
+      {% for _ in range(2) %}<tr><td><input type="text" name="map_container" placeholder="/media/archive" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" placeholder="/mnt/disks/archive" {% if map_locked %}disabled{% endif %}></td></tr>{% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {{ locked_note("path_mappings") }}
+    <p class="help">Clear both boxes of a row to remove it. Rows left half-empty from the suggestions are ignored.</p>
+    <div class="actions"><button type="submit" class="button primary">Save</button></div>
+  </form>
+</section>
+
+{# ------------------------------------------------------------------ generic sections #}
+{% for s in sections %}
+<section class="card settings-section" id="{{ s.key }}">
+  <h2>{{ s.title }}</h2>
+  <p class="help">{{ s.intro }}</p>
+  {{ saved_note(s.key) }}{{ section_error(s.key) }}
+  <form method="post" action="/settings/section/{{ s.key }}" class="settings-form">
+    {% for f in s.fields %}
+    {% set lk = locked.get(f.key) %}
+    {% set v = value(f) %}
+    <div class="field field-{{ f.kind }}">
+      {% if f.kind == "bool" %}
+        <input type="hidden" name="{{ f.key }}" value="0">
+        <label class="check"><input type="checkbox" name="{{ f.key }}" value="1" {% if v %}checked{% endif %} {% if lk %}disabled{% endif %}> {{ f.label }}</label>
+      {% elif f.kind == "checks" %}
+        <span class="field-label">{{ f.label }}</span>
+        <input type="hidden" name="{{ f.key }}" value="">
+        {% for label, items in check_groups %}
+        <fieldset class="check-group"><legend>{{ label }}</legend>
+          {% for c in items %}<label class="check"><input type="checkbox" name="{{ f.key }}" value="{{ c.code }}" {% if c.on %}checked{% endif %} {% if lk %}disabled{% endif %}> {{ c.heading }} <span class="sev sev-{{ c.severity }} small">{{ c.severity }}</span></label>{% endfor %}
+        </fieldset>
+        {% endfor %}
+      {% else %}
+        <label for="f-{{ f.key }}" class="field-label">{{ f.label }}{% if f.restart %} <span class="badge quiet">restart</span>{% endif %}</label>
+        {% if f.kind == "lines" %}
+        <textarea id="f-{{ f.key }}" name="{{ f.key }}" rows="6" placeholder="{{ f.placeholder }}" {% if lk %}disabled{% endif %}>{{ v }}</textarea>
+        {% elif f.kind in ("int", "float") %}
+        <input id="f-{{ f.key }}" type="number" name="{{ f.key }}" value="{{ v }}" {% if f.min is not none %}min="{{ f.min }}"{% endif %} {% if f.max is not none %}max="{{ f.max }}"{% endif %} step="{{ f.step or 'any' }}" {% if lk %}disabled{% endif %}>
+        {% else %}
+        <input id="f-{{ f.key }}" type="text" name="{{ f.key }}" value="{{ v }}" placeholder="{{ f.placeholder }}" {% if lk %}disabled{% endif %} spellcheck="false">
+        {% endif %}
+        {% if f.kind == "cron" %}
+        <div class="presets">{% for label, expr in presets %}<button type="button" class="button small-button" data-cron="{{ expr }}" data-target="f-{{ f.key }}" {% if lk %}disabled{% endif %}>{{ label }}</button>{% endfor %}</div>
+        <p class="small muted">{% if status.schedule.next_run %}Next scheduled scan: {{ status.schedule.next_run.replace("T", " ") }}{% elif status.schedule.error %}<span class="error">{{ status.schedule.error }}</span>{% else %}No scheduled scans.{% endif %}</p>
+        {% endif %}
+      {% endif %}
+      {% if f.help %}<p class="help">{{ f.help }}</p>{% endif %}
+      {% if lk %}<p class="locked small">🔒 Set by <code>{{ lk }}</code>; change it in the container's settings.</p>{% endif %}
+    </div>
+    {% endfor %}
+    <div class="actions"><button type="submit" class="button primary">Save {{ s.title.split(" ")[0] | lower }}</button></div>
+  </form>
+</section>
+{% endfor %}
+
+<section class="card settings-section" id="about">
+  <h2>Files</h2>
+  <dl class="facts">
+    <dt>Config file</dt><dd><code>{{ config_path }}</code></dd>
+    <dt>Database</dt><dd><code>{{ cfg.database }}</code> <span class="muted small">(change it in the config file; it needs a restart)</span></dd>
+  </dl>
+</section>
+{% endif %}
+{% endblock %}

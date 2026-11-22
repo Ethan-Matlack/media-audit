@@ -41,6 +41,7 @@ from media_audit.db import connect, transaction, utcnow
 from media_audit.web import queries
 from media_audit.web.data import ReadDB
 from media_audit.web.service import ScanService
+from media_audit.web.settings_page import settings_routes
 
 log = logging.getLogger(__name__)
 
@@ -454,7 +455,7 @@ def create_app(service: ScanService) -> Starlette:
         in_docker = cleanup.in_docker()
         return {
             "cfg": cfg, "plan": plan, "filters": filters, "in_docker": in_docker,
-            "needs_host_path": in_docker and cfg.cleanup.host_media_path is None,
+            "needs_host_path": in_docker and not cfg.mappings(),
             "saved": cleanup.saved_scripts(cleanup.scripts_dir(cfg)),
             "disclaimer": cleanup.DISCLAIMER,
         }  # fmt: skip
@@ -707,6 +708,7 @@ def create_app(service: ScanService) -> Starlette:
         Route("/issues/cleanup", with_db(cleanup_page)),
         Route("/issues/cleanup", cleanup_post, methods=["POST"]),
         Route("/issues/cleanup/saved/{name}", cleanup_saved),
+        *settings_routes(service, db, render, _same_origin, db_path),
         Route("/scans", scans),
         Route("/libraries/remap", with_db(remap_page)),
         Route("/libraries/remap", remap_post, methods=["POST"]),

@@ -63,7 +63,7 @@ def lib(make_tree: Callable[[str, dict[str, int | str]], Path], tmp_path: Path) 
 
 def _paths(conn: Any, name: str) -> set[str]:
     return {r[0] for r in conn.execute(
-        "SELECT f.path FROM files f JOIN libraries l ON l.id = f.library_id "
+        "SELECT l.path || '/' || f.rel_path FROM files f JOIN libraries l ON l.id = f.library_id "
         "WHERE l.name = ? AND f.deleted_at IS NULL", (name,))}  # fmt: skip
 
 
@@ -308,3 +308,19 @@ def test_remap_from_the_cli(lib: dict[str, Any], capsys: Any) -> None:
     assert main(base) == 0
     assert "movies2 now points at" in capsys.readouterr().out
     assert "name: movies2" in lib["cfg_path"].read_text()
+
+
+def test_scans_page_shows_server_paths(lib: dict[str, Any]) -> None:
+    from starlette.testclient import TestClient
+
+    from media_audit.web.app import create_app
+    from media_audit.web.service import ScanService
+
+    client = TestClient(create_app(ScanService(lib["cfg_path"])))
+    assert "On the server" not in client.get("/scans").text  # no mappings: same paths
+    text = lib["cfg_path"].read_text()
+    lib["cfg_path"].write_text(text + f"path_mappings:\n  - container: {lib['movies']}\n"
+                               "    host: /mnt/user/media/movies\n")  # fmt: skip
+    page = client.get("/scans").text
+    assert "On the server" in page and "<code>/mnt/user/media/movies</code>" in page
+    assert "no mapping" in page  # movies-4k isn't covered
