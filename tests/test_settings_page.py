@@ -141,14 +141,14 @@ def test_scanning_and_other_sections(setup: dict[str, Any]) -> None:
     assert _config(setup).linking.by_id is False
     r = client.post("/settings/section/web", data={"web.port": "9000", "web.host": "0.0.0.0"})
     assert _config(setup).web.port == 9000
-    saved = r.text.split('<div class="notice" role="status">')[1].split("</div>")[0]
+    saved = r.text.split('class="toast"')[1].split("</a>")[0]
     assert "↻</span> Restart required for this change to take effect" in saved
     assert 'class="badge quiet">restart' not in r.text
     # The same marker sits under each setting that needs a restart, and nowhere else.
     web = r.text.split('id="web"')[1].split("</section>")[0]
-    assert web.count("Restart required for this change to take effect") == 3  # 2 fields + saved
+    assert web.count("Restart required for this change to take effect") == 2  # the 2 fields
     r = client.post("/settings/section/linking", data={"linking.by_id": "1"})
-    saved = r.text.split('<div class="notice" role="status">')[1].split("</div>")[0]
+    saved = r.text.split('class="toast"')[1].split("</a>")[0]
     assert "Restart required" not in saved
 
 
@@ -378,3 +378,20 @@ def test_no_placeholder_text_in_forms() -> None:
     for t in templates.iterdir():
         if t.name.endswith(".html"):
             assert "placeholder=" not in t.read_text(), t.name
+
+
+def test_saved_message_is_a_pop_up(setup: dict[str, Any]) -> None:
+    client, media = setup["client"], setup["media"]
+    r = client.post("/settings/section/linking", data={"linking.by_id": "0"})
+    toast = r.text.split('<div class="toasts">')[1].split("</a>")[0]
+    assert 'data-timeout="6000"' in toast and "Saved: Link by ID." in toast
+    assert '<a class="toast-close" href="/settings?tab=general"' in r.text  # works without JS
+    assert "Saved: Link by ID." not in r.text.split('<div class="toasts">')[0]  # not inline too
+    # One with an action waits for you to close it.
+    add = {"action": "add", "name": "anime", "path": str(media / "anime"), "type": "tv"}
+    r = client.post("/settings/libraries", data=add)
+    toast = r.text.split('<div class="toasts">')[1].split("</a>")[0]
+    assert 'data-timeout="0"' in toast and "Scan now" in toast
+    # Errors stay inline, next to their section.
+    r = client.post("/settings/section/scanning", data={"scan.workers": "99"})
+    assert '<div class="toasts">' not in r.text and "between 1 and 32" in r.text

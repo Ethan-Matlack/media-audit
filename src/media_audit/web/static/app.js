@@ -233,6 +233,33 @@
     }
   }
 
+  // Pop-up messages: close with ×, or on their own after a while (paused while the
+  // pointer or focus is on them). One with an action (e.g. Scan now) waits to be closed.
+  for (const toast of $$("[data-toast]")) {
+    const dismiss = () => {
+      toast.classList.add("leaving");
+      setTimeout(() => toast.remove(), 220);
+    };
+    toast.querySelector("[data-toast-close]")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      dismiss();
+    });
+    const ms = Number(toast.dataset.timeout || 0);
+    if (ms > 0) {
+      let timer = setTimeout(dismiss, ms);
+      const pause = () => clearTimeout(timer);
+      const resume = () => { clearTimeout(timer); timer = setTimeout(dismiss, 2500); };
+      toast.addEventListener("mouseenter", pause);
+      toast.addEventListener("focusin", pause);
+      toast.addEventListener("mouseleave", resume);
+      toast.addEventListener("focusout", resume);
+    }
+    // Reloading the page shouldn't show the message again.
+    const url = new URL(window.location.href);
+    for (const k of ["saved", "msg", "backup", "rescan", "restart"]) url.searchParams.delete(k);
+    history.replaceState(null, "", url);
+  }
+
   function bindResults() {
     const results = $("#results");
     if (!results) return;
