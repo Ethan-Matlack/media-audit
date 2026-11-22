@@ -180,7 +180,7 @@ again, and libraries can be on different disks or mounts.
 
 `media-audit library list|add|set|remove` and `media-audit path-mapping list|add|remove`
 change config.yml for you: comments and layout are kept, the result is checked before
-saving, the old file is kept as `config.yml.bak-<time>`, and `--dry-run` shows the change
+saving, the old file is kept as `config.yml.bak-<time>` (the newest 5 are kept), and `--dry-run` shows the change
 without saving. Renaming a library (`library set tv --rename shows`) keeps its history.
 Settings set by `MEDIA_AUDIT_*` environment variables can't be changed this way (the
 command says which variable to change instead). The web UI's settings will work the same
@@ -197,7 +197,8 @@ library and a new one, and read every file again. Instead:
   comments and layout are kept) and then **Remap**: the library points at the new folder
   (and name, if you change it), its stored paths move with it, history, analysis and
   ignored issues are kept, and a quick scan confirms it. The database and config.yml are
-  backed up first (`*.bak-…` next to them). Any library can be remapped by hand from
+  backed up first (`*.bak-…` next to them; the newest 2 database backups of each kind and 5
+  config backups are kept). Any library can be remapped by hand from
   the **Libraries** list on the same page; **It's a different library** hides a wrong
   suggestion.
 * **Same name, new path:** change `path:` in the config and the next scan follows the
@@ -249,7 +250,8 @@ config file:
   on or off, thresholds, expected file types) and the **web UI** port.
 
 Changes are written to config.yml, keeping its comments and layout, and checked before
-they're saved. The previous version is kept as `config.yml.bak-<time>`. They apply
+they're saved. The previous version is kept as `config.yml.bak-<time>`; only the newest 5
+are kept, so they don't pile up. They apply
 straight away (issues are recalculated and the schedule refreshed). Only the web UI's
 port and address need a restart. Settings set by `MEDIA_AUDIT_*` environment variables
 (e.g. in the Unraid template) are shown but locked, with the variable named.

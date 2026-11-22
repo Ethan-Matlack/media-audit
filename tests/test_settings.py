@@ -187,3 +187,34 @@ def test_mount_table(tmp_path: Path) -> None:
     assert mounts.mount_of("/media/content1/movies", info) == "/media/content1"
     assert mounts.mount_of("/media/content2/movies", info) == "/"
     assert mounts.mount_points(tmp_path / "missing") == []
+
+
+def test_old_config_backups_are_pruned(store: ConfigStore, tmp_path: Path) -> None:
+    import os
+
+    unrelated = [tmp_path / "config.yml.tmp-keep", tmp_path / "m.db.bak-remap-20260101-000000"]
+    for p in unrelated:
+        p.write_text("x")
+    backups = []
+    for i in range(7):
+        backup = store.save(store.set_value("scan.workers", i + 1))
+        assert backup is not None
+        os.utime(backup, ns=(i * 10**9, i * 10**9))  # strictly increasing ages
+        backups.append(backup)
+    left = sorted(tmp_path.glob("config.yml.bak-*"))
+    assert left == sorted(backups[-5:])  # the newest five
+    assert all(p.exists() for p in unrelated)
+
+
+def test_prune_keeps_the_newest(tmp_path: Path) -> None:
+    import os
+
+    from media_audit.backups import prune
+
+    files = [tmp_path / f"db.bak-remap-2026010{i}" for i in range(4)]
+    for i, p in enumerate(files):
+        p.write_text("x")
+        os.utime(p, ns=(i * 10**9, i * 10**9))
+    removed = prune(tmp_path, "db.bak-remap-*", 2)
+    assert sorted(removed) == files[:2] and sorted(tmp_path.iterdir()) == files[2:]
+    assert prune(tmp_path / "missing", "*", 1) == []

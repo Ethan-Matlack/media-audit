@@ -324,3 +324,19 @@ def test_scans_page_shows_server_paths(lib: dict[str, Any]) -> None:
     page = client.get("/scans").text
     assert "On the server" in page and "<code>/mnt/user/media/movies</code>" in page
     assert "no mapping" in page  # movies-4k isn't covered
+
+
+def test_remap_keeps_two_database_backups(lib: dict[str, Any]) -> None:
+    from datetime import datetime
+
+    conn, media, db = lib["conn"], lib["media"], lib["db"]
+    lib["movies"].rename(media / "a")
+    names = ["a", "b", "c", "d"]
+    for i, name in enumerate(names):
+        if i:
+            (media / names[i - 1]).rename(media / name)
+        remap.apply_remap(conn, db, f"movies{i}" if i else "movies", str(media / name),
+                          f"movies{i + 1}", now=datetime(2026, 1, 1, 0, 0, i))  # fmt: skip
+    left = sorted(p.name for p in db.parent.glob("media-audit.db.bak-remap-*"))
+    assert left == ["media-audit.db.bak-remap-20260101-000002",
+                    "media-audit.db.bak-remap-20260101-000003"]  # fmt: skip

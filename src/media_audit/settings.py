@@ -33,6 +33,7 @@ from typing import Any
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
+from media_audit.backups import CONFIG_BACKUPS, prune
 from media_audit.config import (
     ENV_PREFIX,
     NON_CONFIG_ENV,
@@ -386,6 +387,7 @@ class ConfigStore:
         tmp = self.path.with_name(self.path.name + ".tmp")
         tmp.write_text(change.new_text, encoding="utf-8")
         tmp.replace(self.path)
+        prune(self.path.parent, f"{self.path.name}.bak-*", CONFIG_BACKUPS)
         if conn is not None and change.renames:
             try:
                 with transaction(conn):
