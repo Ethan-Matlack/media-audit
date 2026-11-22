@@ -180,6 +180,18 @@
     });
   }
 
+  // Path mappings: add as many rows as needed.
+  for (const b of $$("[data-add-mapping]")) {
+    b.addEventListener("click", () => {
+      const tpl = $("[data-mapping-template]");
+      const rows = $("[data-mapping-rows]");
+      if (!tpl || !rows) return;
+      rows.appendChild(tpl.content.cloneNode(true));
+      const inputs = $$("input", rows);
+      inputs[inputs.length - 2]?.focus();
+    });
+  }
+
   function bindResults() {
     const results = $("#results");
     if (!results) return;

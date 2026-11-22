@@ -411,3 +411,5 @@ table.mappings tr.suggested input:first-child { color: var(--accent-ink); }
   details.library > summary { grid-template-columns: 1fr auto; }
   details.library .lib-path { grid-column: 1 / -1; order: 3; }
 }
+table.mappings .lock-cell { width: 2rem; text-align: center; vertical-align: middle; cursor: help; }
+table.mappings tr.locked-row input { color: var(--text-2); }

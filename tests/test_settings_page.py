@@ -269,3 +269,32 @@ def test_saving_a_section_unchanged_changes_nothing(setup: dict[str, Any]) -> No
         r = _post(client, f"/settings/section/{key}", pairs)
         assert r.status_code == 200 and "Nothing changed." in r.text, (key, r.text[-2000:])
     assert setup["cfg"].read_text() == before
+
+
+def test_container_mapping_shows_as_a_locked_row(setup: dict[str, Any], monkeypatch: Any) -> None:
+    client, media = setup["client"], setup["media"]
+    monkeypatch.setenv("MEDIA_AUDIT_CLEANUP__HOST_MEDIA_PATH", "/mnt/user/media/content")
+    monkeypatch.setenv("MEDIA_AUDIT_CLEANUP__MEDIA_MOUNT", str(media))
+    page = client.get("/settings").text
+    folders = page.split('id="folders"')[1].split("</section>")[0]
+    locked_row = folders.split('class="locked-row"')[1].split("</tr>")[0]
+    assert f'value="{media}" disabled' in locked_row
+    assert 'value="/mnt/user/media/content" disabled' in locked_row
+    assert "MEDIA_AUDIT_CLEANUP__HOST_MEDIA_PATH" in folders and "Host media path" in folders
+    assert (
+        "Usually there&#39;s nothing to add" in folders
+        or "Usually there's nothing to add" in folders
+    )
+    assert "data-add-mapping" in folders and "<template data-mapping-template>" in folders
+
+    # Saving the section doesn't copy the container's mapping into config.yml.
+    r = _post(client, "/settings/folders", [("media_folders", str(media)),
+                                            ("map_container", ""), ("map_host", "")])  # fmt: skip
+    assert r.status_code == 200 and "path_mappings" not in setup["cfg"].read_text()
+
+    # A mapping of your own for the same folder replaces it (and the locked row goes).
+    own = [("media_folders", str(media)), ("map_container", str(media)), ("map_host", "/mnt/other")]
+    _post(client, "/settings/folders", own)
+    folders = client.get("/settings").text.split('id="folders"')[1].split("</section>")[0]
+    assert 'class="locked-row"' not in folders
+    assert _config(setup).host_path(media / "movies") == "/mnt/other/movies"

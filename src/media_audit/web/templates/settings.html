@@ -138,24 +138,42 @@
       The folder browser starts here, and moved libraries are looked for here.</p>
 
     <h3>Paths on the server</h3>
-    <p class="help">{% if in_docker %}media-audit runs in a container, so its folders have different paths on the server.{% endif %}
-      Cleanup scripts run on the server, so they need to know where each folder is there. The longest matching
-      folder wins, so several mounts under <code>/media</code> can each have their own.</p>
-    {% if legacy_mapping %}<p class="small">From the <strong>Host media path</strong> variable (<code>cleanup.host_media_path</code>):
-      <code>{{ legacy_mapping.container }}</code> → <code>{{ legacy_mapping.host }}</code></p>{% endif %}
+    <p class="help">Only cleanup scripts use these: they run on the server, not in the container, so they need each
+      folder's path there. <strong>Usually there's nothing to add.</strong> With one media path in the container, the
+      container's own settings already provide it (on Unraid: the <strong>Host media path</strong> variable), and it
+      shows below with a 🔒. Add a mapping only for an extra media path you've mounted, e.g.
+      <code>/media/archive</code> from another disk. The longest matching folder wins, so it takes precedence over
+      the one for <code>/media</code>.</p>
     {% set map_locked = locked.get("path_mappings") %}
     <div class="table-wrap">
     <table class="data mappings">
-      <thead><tr><th>Folder in media-audit</th><th>Same folder on the server</th></tr></thead>
-      <tbody>
-      {% for c, h in mappings %}<tr><td><input type="text" name="map_container" value="{{ c }}" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" value="{{ h }}" {% if map_locked %}disabled{% endif %}></td></tr>{% endfor %}
-      {% for m in suggested_mounts %}<tr class="suggested"><td><input type="text" name="map_container" value="{{ m }}" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" value="" placeholder="mounted here, but no server path yet" {% if map_locked %}disabled{% endif %}></td></tr>{% endfor %}
-      {% for _ in range(2) %}<tr><td><input type="text" name="map_container" placeholder="/media/archive" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" placeholder="/mnt/disks/archive" {% if map_locked %}disabled{% endif %}></td></tr>{% endfor %}
+      <thead><tr><th>Folder in media-audit</th><th>Same folder on the server</th><th class="actions-col"><span class="visually-hidden">Source</span></th></tr></thead>
+      <tbody data-mapping-rows>
+      {% if legacy_mapping %}
+      <tr class="locked-row">
+        <td><input type="text" value="{{ legacy_mapping.container }}" disabled aria-label="Folder in media-audit"></td>
+        <td><input type="text" value="{{ legacy_mapping.host }}" disabled aria-label="Same folder on the server"></td>
+        <td class="lock-cell" title="{% if legacy_source %}Set by the container setting {{ legacy_source }}{% else %}Set by cleanup.host_media_path in config.yml{% endif %}">🔒</td>
+      </tr>
+      {% endif %}
+      {% for c, h in mappings %}<tr><td><input type="text" name="map_container" value="{{ c }}" aria-label="Folder in media-audit" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" value="{{ h }}" aria-label="Same folder on the server" {% if map_locked %}disabled{% endif %}></td><td class="lock-cell">{% if map_locked %}🔒{% endif %}</td></tr>{% endfor %}
+      {% for m in suggested_mounts %}<tr class="suggested"><td><input type="text" name="map_container" value="{{ m }}" aria-label="Folder in media-audit" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" value="" placeholder="mounted here, but no server path yet" aria-label="Same folder on the server" {% if map_locked %}disabled{% endif %}></td><td></td></tr>{% endfor %}
+      {% if not map_locked %}<tr><td><input type="text" name="map_container" placeholder="/media/archive" aria-label="Folder in media-audit"></td><td><input type="text" name="map_host" placeholder="/mnt/disks/archive" aria-label="Same folder on the server"></td><td></td></tr>{% endif %}
       </tbody>
     </table>
     </div>
+    {% if legacy_mapping %}
+    <p class="locked small">🔒 {% if legacy_source %}Set by the container's settings (<code>{{ legacy_source }}</code>; on Unraid, the
+      <strong>Host media path</strong> variable). Change it there.{% else %}Set by <code>cleanup.host_media_path</code> in the config
+      file. A mapping above for the same folder replaces it.{% endif %}</p>
+    {% endif %}
     {{ locked_note("path_mappings") }}
-    <p class="help">Clear both boxes of a row to remove it. Rows left half-empty from the suggestions are ignored.</p>
+    {% if not map_locked %}
+    <template data-mapping-template><tr><td><input type="text" name="map_container" placeholder="/media/archive" aria-label="Folder in media-audit"></td><td><input type="text" name="map_host" placeholder="/mnt/disks/archive" aria-label="Same folder on the server"></td><td></td></tr></template>
+    <p><button type="button" class="button small-button" data-add-mapping>+ Add mapping</button></p>
+    <p class="help">To remove a mapping, clear both boxes and save. Suggested rows (mounts with no server path yet) are
+      ignored unless you fill in the server side.</p>
+    {% endif %}
     <div class="actions"><button type="submit" class="button primary">Save</button></div>
   </form>
 </section>

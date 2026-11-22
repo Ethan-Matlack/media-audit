@@ -145,8 +145,11 @@ def settings_routes(
             "check_groups": sf.check_groups(cfg), "all_checks": list(CHECKS.values()),
             "presets": sf.SCHEDULE_PRESETS, "libraries": libraries,
             "found": found_folders(cfg), "mappings": explicit,
-            "legacy_mapping": legacy if legacy and (legacy.container, legacy.host)
-            not in explicit else None,
+            # The mapping from cleanup.host_media_path: shown as a locked row, unless a
+            # mapping in the list for the same folder takes its place.
+            "legacy_mapping": legacy if legacy and all(c != legacy.container
+                                                       for c, _ in explicit) else None,
+            "legacy_source": st.locked("cleanup.host_media_path"),
             "suggested_mounts": suggested, "in_docker": Path("/.dockerenv").exists(),
             "saved": q.get("saved"), "message": q.get("msg"), "backup": q.get("backup"),
             "rescan": q.get("rescan") == "1",
