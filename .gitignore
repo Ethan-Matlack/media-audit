@@ -8,14 +8,21 @@ dist/
 build/
 *.egg-info/
 
-# Local data
+# Local data: run locally with MEDIA_AUDIT_CONFIG=.dev/config.yml; everything it writes
+# (database, backups, cleanup scripts) lands in .dev/, like /config in the container.
+/.dev/
+docker/media/
+docker/config/*
+.env
+
+# Safety net: never commit a stray database or config from anywhere else.
 *.db
 *.db-shm
 *.db-wal
 *.db.lock
+*.db.bak-*
 config.yml
 config.yml.bak-*
-docker/media/
-docker/config/*
+
+# ...except the example config the Docker image ships with.
 !docker/config/config.yml
-.env

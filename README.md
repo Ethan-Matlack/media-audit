@@ -131,6 +131,12 @@ uv run media-audit stats
 uv run media-audit serve          # web UI on http://localhost:8484 + scheduled scans
 ```
 
+The config is found in this order: `-c path/to/config.yml`, then the
+`MEDIA_AUDIT_CONFIG` variable, then `config.yml` in the current folder, then
+`/config/config.yml` (the Docker image sets `MEDIA_AUDIT_CONFIG=/config/config.yml`).
+Relative paths in the config, such as `database: media-audit.db`, are relative to the
+config file. The database, its backups and saved cleanup scripts all end up next to it.
+
 ## Commands
 
 | command | does |
@@ -431,6 +437,26 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 ```
+
+**Running the web UI locally:** keep everything it writes in `.dev/` (git-ignored), the
+same way the container keeps it in `/config`:
+
+```sh
+mkdir -p .dev
+cat > .dev/config.yml <<'YAML'
+database: media-audit.db   # .dev/media-audit.db
+libraries: []              # or real libraries; set them up in Settings
+scan:
+  schedule: off
+YAML
+export MEDIA_AUDIT_CONFIG=.dev/config.yml
+uv run media-audit serve   # http://localhost:8484
+```
+
+To work on real data, copy a database from the server to `.dev/media-audit.db`. Pages
+that read the media folders (scans, the folder browser) need the media too;
+`scripts/make_demo_library.sh` builds a small fake library for that. Templates, CSS
+and JS changes show on a browser refresh; Python changes need a restart.
 
 ### CI and releases
 
