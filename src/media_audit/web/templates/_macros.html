@@ -157,7 +157,7 @@
       <label><input type="radio" name="{{ f.key }}_not" value="" {% if not neg %}checked{% endif %}><span>{{ "Has" if f.is_track else "Is" }}</span></label>
       <label><input type="radio" name="{{ f.key }}_not" value="1" {% if neg %}checked{% endif %}><span>{{ "Has none of" if f.is_track else "Is not" }}</span></label>
     </div>
-    {% if rows | length > 8 %}<input type="search" class="facet-search" placeholder="Find…" aria-label="Find a {{ f.label | lower }}" data-facet-search>{% endif %}
+    {% if rows | length > 8 %}<label class="facet-find">Find a {{ f.label | lower }} <input type="search" class="facet-search" data-facet-search></label>{% endif %}
     <ul class="facet-options" data-facet-list>{{ facet_options(f, rows) }}</ul>
     <div class="facet-foot"><button type="button" class="link" data-facet-clear>Clear</button></div>
   </div>

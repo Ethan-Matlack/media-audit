@@ -368,3 +368,13 @@ def test_file_locations(setup: dict[str, Any], tmp_path: Path, monkeypatch: Any)
     rows = _file_locations(Path("/config/config.yml"), cfg)
     appdata = "/mnt/user/appdata/media-audit"
     assert [r["host"] for r in rows] == [f"{appdata}/config.yml", f"{appdata}/media-audit.db"]
+
+
+def test_no_placeholder_text_in_forms() -> None:
+    """Labels and help text explain every field; placeholders vanish once you type."""
+    from importlib import resources
+
+    templates = resources.files("media_audit.web") / "templates"
+    for t in templates.iterdir():
+        if t.name.endswith(".html"):
+            assert "placeholder=" not in t.read_text(), t.name

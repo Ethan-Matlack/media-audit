@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head"><h1>Titles</h1></div>
 <form method="get" class="filters" data-autosubmit>
-  <label class="grow">Search <input type="search" name="q" value="{{ params.q or '' }}" placeholder="Title name"></label>
+  <label class="grow">Title contains <input type="search" name="q" value="{{ params.q or '' }}"></label>
   <label>Library
     <select name="library"><option value="">All</option>
       {% for l in libraries %}<option value="{{ l.name }}" {% if params.library == l.name %}selected{% endif %}>{{ l.name }}</option>{% endfor %}

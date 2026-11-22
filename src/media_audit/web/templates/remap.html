@@ -17,10 +17,12 @@
   <form method="get" action="/libraries/remap" class="filters">
     <input type="hidden" name="library" value="{{ library.name }}">
     <label class="grow">New folder (as media-audit sees it)
-      <input type="search" name="path" value="{{ path }}" placeholder="/media/movies2" required></label>
+      <input type="search" name="path" value="{{ path }}" required></label>
     <label>Library name <input type="search" name="name" value="{{ name }}" required></label>
     <button type="submit" class="button">Check</button>
   </form>
+  <p class="help">The library's folder now, as a full path the way media-audit sees it, e.g.
+    <code>/media/movies2</code>. Change the name too if you'd like the library renamed.</p>
 </section>
 
 {% if comparison %}

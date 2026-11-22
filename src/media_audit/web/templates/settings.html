@@ -3,7 +3,7 @@
 
 {% macro folder_input(name, value, id, name_target="", type_target="", required=false, disabled=false) %}
 <span class="folder-input">
-  <input type="text" name="{{ name }}" id="{{ id }}" value="{{ value }}" placeholder="/media/movies" {% if required %}required{% endif %} {% if disabled %}disabled{% endif %} autocomplete="off" spellcheck="false">
+  <input type="text" name="{{ name }}" id="{{ id }}" value="{{ value }}" {% if required %}required{% endif %} {% if disabled %}disabled{% endif %} autocomplete="off" spellcheck="false">
   <button type="button" class="button" data-browse="{{ id }}" {% if name_target %}data-name-target="{{ name_target }}"{% endif %} {% if type_target %}data-type-target="{{ type_target }}"{% endif %} {% if disabled %}disabled{% endif %}>Browse…</button>
 </span>
 <div class="picker" data-picker-for="{{ id }}" hidden></div>
@@ -122,10 +122,13 @@
   <form method="post" action="/settings/libraries" class="settings-form">
     <input type="hidden" name="action" value="add">
     <div class="field-row">
-      <label>Name <input type="text" name="name" id="add-name" placeholder="movies" required {% if lib_locked %}disabled{% endif %}></label>
+      <label>Name <input type="text" name="name" id="add-name" required {% if lib_locked %}disabled{% endif %}></label>
       <label>Type {{ type_select("type", "movies", "add-type", disabled=lib_locked) }}</label>
     </div>
+    <p class="help">The name is how the library appears everywhere in media-audit, e.g. <em>movies</em> or <em>tv</em>.</p>
     <label>Folder {{ folder_input("path", "", "add-path", "add-name", "add-type", required=true, disabled=lib_locked) }}</label>
+    <p class="help">The library's folder as a full path the way media-audit sees it, e.g. <code>/media/movies</code>.
+      <strong>Browse…</strong> lists the folders in your media folders, and fills in the name and type when they're empty.</p>
     <div class="actions"><button type="submit" class="button primary" {% if lib_locked %}disabled{% endif %}>Add library</button></div>
   </form>
 </section>
@@ -161,8 +164,8 @@
       </tr>
       {% endif %}
       {% for c, h in mappings %}<tr><td><input type="text" name="map_container" value="{{ c }}" aria-label="Folder in media-audit" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" value="{{ h }}" aria-label="Same folder on the server" {% if map_locked %}disabled{% endif %}></td><td class="lock-cell">{% if map_locked %}🔒{% endif %}</td></tr>{% endfor %}
-      {% for m in suggested_mounts %}<tr class="suggested"><td><input type="text" name="map_container" value="{{ m }}" aria-label="Folder in media-audit" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" value="" placeholder="mounted here, but no server path yet" aria-label="Same folder on the server" {% if map_locked %}disabled{% endif %}></td><td></td></tr>{% endfor %}
-      {% if not map_locked %}<tr><td><input type="text" name="map_container" placeholder="/media/archive" aria-label="Folder in media-audit"></td><td><input type="text" name="map_host" placeholder="/mnt/disks/archive" aria-label="Same folder on the server"></td><td></td></tr>{% endif %}
+      {% for m in suggested_mounts %}<tr class="suggested"><td><input type="text" name="map_container" value="{{ m }}" aria-label="Folder in media-audit" {% if map_locked %}disabled{% endif %}></td><td><input type="text" name="map_host" value="" aria-label="Same folder on the server" {% if map_locked %}disabled{% endif %}><div class="small muted">Mounted, but no server path yet</div></td><td></td></tr>{% endfor %}
+      {% if not map_locked %}<tr><td><input type="text" name="map_container" aria-label="Folder in media-audit"></td><td><input type="text" name="map_host" aria-label="Same folder on the server"></td><td></td></tr>{% endif %}
       </tbody>
     </table>
     </div>
@@ -173,9 +176,10 @@
     {% endif %}
     {{ locked_note("path_mappings") }}
     {% if not map_locked %}
-    <template data-mapping-template><tr><td><input type="text" name="map_container" placeholder="/media/archive" aria-label="Folder in media-audit"></td><td><input type="text" name="map_host" placeholder="/mnt/disks/archive" aria-label="Same folder on the server"></td><td></td></tr></template>
+    <template data-mapping-template><tr><td><input type="text" name="map_container" aria-label="Folder in media-audit"></td><td><input type="text" name="map_host" aria-label="Same folder on the server"></td><td></td></tr></template>
     <p><button type="button" class="button small-button" data-add-mapping>+ Add mapping</button></p>
-    <p class="help">To remove a mapping, clear both boxes and save. Suggested rows (mounts with no server path yet) are
+    <p class="help">Each row is a full path on both sides, e.g. <code>/media/archive</code> in media-audit and
+      <code>/mnt/disks/archive</code> on the server. To remove a mapping, clear both boxes and save. Suggested rows are
       ignored unless you fill in the server side.</p>
     {% endif %}
     <div class="actions"><button type="submit" class="button primary">Save</button></div>
@@ -208,11 +212,11 @@
       {% else %}
         <label for="f-{{ f.key }}" class="field-label">{{ f.label }}</label>
         {% if f.kind == "lines" %}
-        <textarea id="f-{{ f.key }}" name="{{ f.key }}" rows="6" placeholder="{{ f.placeholder }}" {% if lk %}disabled{% endif %}>{{ v }}</textarea>
+        <textarea id="f-{{ f.key }}" name="{{ f.key }}" rows="6" {% if lk %}disabled{% endif %}>{{ v }}</textarea>
         {% elif f.kind in ("int", "float") %}
         <input id="f-{{ f.key }}" type="number" name="{{ f.key }}" value="{{ v }}" {% if f.min is not none %}min="{{ f.min }}"{% endif %} {% if f.max is not none %}max="{{ f.max }}"{% endif %} step="{{ f.step or 'any' }}" {% if lk %}disabled{% endif %}>
         {% else %}
-        <input id="f-{{ f.key }}" type="text" name="{{ f.key }}" value="{{ v }}" placeholder="{{ f.placeholder }}" {% if lk %}disabled{% endif %} spellcheck="false">
+        <input id="f-{{ f.key }}" type="text" name="{{ f.key }}" value="{{ v }}" {% if lk %}disabled{% endif %} spellcheck="false">
         {% endif %}
         {% if f.kind == "cron" %}
         {% endif %}

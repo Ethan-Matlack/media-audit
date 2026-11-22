@@ -56,13 +56,14 @@
   <a class="button" href="/files.csv{{ qs(params, page=None) }}" download>Export CSV</a>
 </div>
 <form method="get" class="filters" data-autosubmit>
-  <label class="grow">Path
+  <label class="grow">Folder or file name
     <span class="path-filter">
       <select name="q_not" aria-label="Path match">
         <option value="">contains</option>
         <option value="1" {% if params.q_not == "1" %}selected{% endif %}>doesn't contain</option>
       </select>
-      <input type="search" name="q" value="{{ params.q or '' }}" placeholder="e.g. Season 01, x265, Remux">
+      <input type="search" name="q" value="{{ params.q or '' }}" aria-label="Text in the folder or file name"
+             title="Any part of the folder or file name: a show, Season 01, x265, Remux…">
     </span>
   </label>
   <label>Show

@@ -25,7 +25,6 @@ class Field:
     min: float | None = None
     max: float | None = None
     step: float | None = None
-    placeholder: str = ""
     restart: bool = False  # takes effect after the container restarts
 
 
@@ -52,7 +51,6 @@ SECTIONS: tuple[Section, ...] = (
                 "in the container's time zone. For example 0 3 * * * is daily at 03:00, "
                 "0 */6 * * * every 6 hours, 0 3 * * 0 Sundays at 03:00. Leave it empty or type "
                 "off for no scheduled scans (Scan now on the Scans page still works).",
-                placeholder="0 3 * * *",
             ),
             Field(
                 "scan.workers",
@@ -104,7 +102,6 @@ SECTIONS: tuple[Section, ...] = (
                 "lines",
                 "Files and folders whose name matches one of these patterns (one per line; * "
                 "and ? work) are skipped, e.g. @eaDir or *.part.",
-                placeholder="@eaDir\n.DS_Store\n*.part",
             ),
         ),
     ),
@@ -139,14 +136,12 @@ SECTIONS: tuple[Section, ...] = (
                 "words",
                 "Two- or three-letter codes or names, e.g. en, ja. Files with none of these "
                 "are listed under No audio in your preferred language.",
-                placeholder="en",
             ),
             Field(
                 "languages.preferred_subtitles",
                 "Preferred subtitle languages",
                 "words",
                 "Same format. Leave empty if you don't mind.",
-                placeholder="en",
             ),
         ),
     ),
@@ -209,9 +204,9 @@ SECTIONS: tuple[Section, ...] = (
                 "flags.allowed_extensions",
                 "Expected file types",
                 "words",
-                "Non-video, non-subtitle files that belong in a library (artwork, metadata). "
-                "Anything else is a stray file.",
-                placeholder="nfo, jpg, png",
+                "Extensions of non-video, non-subtitle files that belong in a library (artwork, "
+                "metadata), separated by commas, e.g. nfo, jpg, png. Anything else is a stray "
+                "file.",
             ),
             Field(
                 "flags.strict_nfo",
@@ -234,7 +229,6 @@ SECTIONS: tuple[Section, ...] = (
                 "path",
                 "Where /config is on the server, e.g. /mnt/user/appdata/media-audit. Only used "
                 "to show the command for running a saved script.",
-                placeholder="/mnt/user/appdata/media-audit",
             ),
         ),
     ),
