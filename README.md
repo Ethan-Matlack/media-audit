@@ -36,8 +36,6 @@ The image is published to GitHub Container Registry as
      if that's where `movies/` and `tv/` live. It's mounted read-only.
    - **Config**: leave it at `/mnt/user/appdata/media-audit`.
    - **Web UI port**: `8484`, unless something else uses it.
-   - **Scan schedule**: leave empty for 03:00 daily, or set a cron expression (see
-     [Scheduled scans](#scheduled-scans)).
    - **PUID / PGID** (under advanced): leave them at `99` / `100` (nobody:users).
 
    Click Apply.
@@ -49,14 +47,15 @@ The image is published to GitHub Container Registry as
    - Anything else (books, music, photos...) is listed but commented out.
 
    The UI shows a banner while nothing has been scanned. Check the library list (the
-   container log shows it too), edit `config.yml` if a type is wrong (no restart
-   needed), then press **Scan now**.
+   container log shows it too), fix any wrong type under **Settings → Libraries** (no
+   restart needed), then press **Scan now**.
 4. **Wait for the first scan.** It reads every file once: about an hour for ~19,000
    files (see [Scan times](#scan-times)). The **Scans** page shows live progress, and
    pages fill in when it finishes. Stopping the container mid-scan is safe: the next
    scan continues where it left off.
-5. **After that, it keeps itself up to date.** A scan runs at 03:00 daily by default,
-   and each one only reads new or changed files (about a minute for ~21,700 files).
+5. **After that, it keeps itself up to date.** A scan runs at 03:00 daily by default
+   (change it, and how many files are read at once, under **Settings → Scanning**), and
+   each one only reads new or changed files (about a minute for ~21,700 files).
 
 **Command line:** the CLI still works inside the running container. Use `-u 99:100` so
 any files it writes belong to the same user as the service:
@@ -273,9 +272,9 @@ config keys.
 
 ### Scheduled scans
 
-`scan.schedule` is a standard 5-field cron expression (minute, hour, day of month,
-month, weekday), in the container's time zone (`TZ`; Unraid sets it from the server's
-own setting):
+Set it under **Settings → Scanning** (or `scan.schedule` in the config). It's a standard
+5-field cron expression (minute, hour, day of month, month, weekday), in the container's
+time zone (`TZ`; Unraid sets it from the server's own setting):
 
 | schedule | runs |
 |---|---|

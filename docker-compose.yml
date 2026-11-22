@@ -22,9 +22,8 @@ services:
     restart: unless-stopped
     environment:
       TZ: "${TZ:-UTC}"
-      # Any config key can be overridden here, e.g.:
-      # MEDIA_AUDIT_SCAN__WORKERS: "2"
-      # MEDIA_AUDIT_SCAN__SCHEDULE: "0 3 * * *"   # or "off"
+      # Settings are made in the web UI (Settings). A MEDIA_AUDIT_<KEY> variable here
+      # would override one and lock it in the UI, so only use one for that on purpose.
     ports:
       - "${WEB_PORT:-8484}:8484"
     volumes:
