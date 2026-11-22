@@ -21,6 +21,9 @@
   <Category>MediaApp:Video Tools:</Category>
   <WebUI>http://[IP]:[PORT:8484]/</WebUI>
   <Changes>
+### 0.8.0
+- Settings page: set up everything from the web UI (libraries with a folder browser, scanning, schedule, linking, languages, Issues checks, media folders and server paths) without editing config.yml.
+
 ### 0.7.0
 - Libraries can live in several media folders or mounts (mount each under /media); path mappings tell cleanup scripts where each one is on the server.
 - Everything about a library's files is stored relative to the library, so renaming or moving a library never re-reads it. The database is upgraded on first start (backed up first).

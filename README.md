@@ -235,7 +235,27 @@ settings (2 workers). That works out to about
 
 ## Configuration
 
-See [config.example.yml](config.example.yml). Any key can be overridden with
+Everything can be set up from the web UI's **Settings** page, without touching the
+config file:
+
+* **Libraries:** add (with a folder browser, or one click from the folders found in your
+  media folders, with the type guessed from the name), rename (the library keeps its
+  history), move, change type, switch off, or remove. Each library can also switch off
+  individual Issues checks.
+* **Media folders and server paths** (path mappings for cleanup scripts); mounts that
+  have no server path yet are suggested.
+* **Scanning** (schedule with presets and the next run shown, files read at once, parse
+  speeds, ignore patterns), **linking**, **preferred languages**, **Issues** (each check
+  on or off, thresholds, expected file types) and the **web UI** port.
+
+Changes are written to config.yml, keeping its comments and layout, and checked before
+they're saved. The previous version is kept as `config.yml.bak-<time>`. They apply
+straight away (issues are recalculated and the schedule refreshed). Only the web UI's
+port and address need a restart. Settings set by `MEDIA_AUDIT_*` environment variables
+(e.g. in the Unraid template) are shown but locked, with the variable named.
+
+The file is still the source of truth, so hand edits work too. See
+[config.example.yml](config.example.yml). Any key can be overridden with
 `MEDIA_AUDIT_<KEY>` env vars, using `__` for nesting (`MEDIA_AUDIT_SCAN__WORKERS=4`).
 An empty variable counts as unset, so the config file decides. To turn something off,
 use a value like `off` (e.g. `MEDIA_AUDIT_SCAN__SCHEDULE=off`).
@@ -391,6 +411,7 @@ src/media_audit/
   cleanup.py           cleanup scripts for Issues (generated text; never run by media-audit)
   remap.py             renamed/moved library folders: detection and remapping
   settings.py          every config change (CLI, remap, web UI): ruamel.yaml, checked, backed up
+  web/settings_*.py    the Settings page: field definitions and handlers
   mounts.py            the container's mount table (which media folders are mounted)
   web/                 `serve`: scan service + scheduler, Starlette app, Jinja templates,
                        static CSS/JS (no build step, no CDN)

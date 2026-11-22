@@ -241,6 +241,7 @@ class ConfigStore:
             if self._find(libs, name=new_name) is not None:
                 raise SettingsError(f"there's already a library called {new_name!r}")
             item["name"] = new_name
+            _rename_overrides(doc, name, new_name)
         if path is not None and norm(path) != norm(item.get("path", "")):
             item["path"] = norm(path)
         if lib_type is not None and lib_type != item.get("type"):
@@ -270,6 +271,7 @@ class ConfigStore:
         if i is None:
             raise SettingsError(f"there's no library called {name!r} in the config")
         del libs[i]
+        _rename_overrides(doc, name, None)
         return self._finish(text, doc, f"Remove library {name} (its history stays, disabled)")
 
     def remap_library(self, old_name: str, new_name: str, new_path: str,
@@ -291,6 +293,8 @@ class ConfigStore:
         clash = self._find(libs, name=new_name)
         if clash is not None and clash not in (old_i, new_i):
             raise SettingsError(f"there's already a library called {new_name!r}")
+        if old_name != new_name:
+            _rename_overrides(doc, old_name, new_name)
         if old_i is not None and new_i is not None:
             libs[new_i]["name"] = new_name
             del libs[old_i]
@@ -343,25 +347,17 @@ class ConfigStore:
     def set_value(self, key: str, value: Any) -> Change:
         """Set one setting by its dotted name, e.g. ``scan.schedule`` or ``web.port``.
         ``None`` removes it (back to the default)."""
-        self._require_unlocked(key)
+        return self.set_values({key: value})
+
+    def set_values(self, values: Mapping[str, Any], summary: str | None = None) -> Change:
+        """Set several settings at once (one change, one backup). ``None`` removes one."""
+        for key in values:
+            self._require_unlocked(key)
         text, doc = self._load()
-        parts = key.split(".")
-        node: Any = doc
-        for part in parts[:-1]:
-            child = node.get(part)
-            if child is None:
-                if value is None:
-                    return Change(self.path, text, text, f"{key}: unchanged")
-                child = CommentedMap()
-                node[part] = child
-            if not isinstance(child, CommentedMap):
-                raise SettingsError(f"{part} in the config isn't a section")
-            node = child
-        if value is None:
-            node.pop(parts[-1], None)
-        else:
-            node[parts[-1]] = value
-        return self._finish(text, doc, f"{key}: {value!r}")
+        for key, value in values.items():
+            _set(doc, key, value)
+        names = ", ".join(values)
+        return self._finish(text, doc, summary or f"Changed {names}")
 
     # ------------------------------------------------------------------ saving
     def save(self, change: Change, *, conn: sqlite3.Connection | None = None,
@@ -381,7 +377,11 @@ class ConfigStore:
             for old, new in change.renames:
                 _check_db_rename(conn, old, new)
         now = now or datetime.now()
-        backup = self.path.with_name(f"{self.path.name}.bak-{now:%Y%m%d-%H%M%S}")
+        stem = f"{self.path.name}.bak-{now:%Y%m%d-%H%M%S}"
+        backup, n = self.path.with_name(stem), 1
+        while backup.exists():  # two saves in one second: never overwrite a backup
+            n += 1
+            backup = self.path.with_name(f"{stem}-{n}")
         backup.write_text(change.old_text, encoding="utf-8")
         tmp = self.path.with_name(self.path.name + ".tmp")
         tmp.write_text(change.new_text, encoding="utf-8")
@@ -395,6 +395,51 @@ class ConfigStore:
                 self.path.write_text(change.old_text, encoding="utf-8")
                 raise
         return backup
+
+
+def _rename_overrides(doc: CommentedMap, old: str, new: str | None) -> None:
+    """flags.disabled_by_library is keyed by library name: follow a rename or removal."""
+    flags = doc.get("flags")
+    per_lib = flags.get("disabled_by_library") if isinstance(flags, CommentedMap) else None
+    if not isinstance(per_lib, dict) or old not in per_lib:
+        return
+    codes = per_lib.pop(old)
+    if new is not None:
+        per_lib[new] = codes
+
+
+def _set(doc: CommentedMap, key: str, value: Any) -> None:
+    parts = key.split(".")
+    node: Any = doc
+    for part in parts[:-1]:
+        child = node.get(part)
+        if child is None:
+            if value is None:
+                return
+            child = CommentedMap()
+            node[part] = child
+        if not isinstance(child, CommentedMap):
+            raise SettingsError(f"{part} in the config isn't a section")
+        node = child
+    last = parts[-1]
+    if value is None:
+        node.pop(last, None)
+        return
+    if isinstance(value, list | tuple):
+        old = node.get(last)
+        seq = CommentedSeq(value)
+        # Keep the style the list had; new short lists of words go on one line.
+        short = len(value) <= 12 and all(isinstance(v, str) and len(v) <= 24 for v in value)
+        flow = old.fa.flow_style() if isinstance(old, CommentedSeq) else short
+        if flow:
+            seq.fa.set_flow_style()
+        else:
+            seq.fa.set_block_style()
+        value = seq
+    elif isinstance(value, dict):
+        value = CommentedMap(value)
+    if node.get(last) != value or type(node.get(last)) is not type(value):
+        node[last] = value
 
 
 def _check_db_rename(conn: sqlite3.Connection, old: str, new: str) -> None:
