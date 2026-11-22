@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import severity_badge, ignore_button, issue_where %}
+{% from "_macros.html" import severity_badge, ignore_button, issue_where, pager %}
 {% block title %}Issues · media-audit{% endblock %}
 {% block content %}
 {% set here = request.url.path ~ qs(params) %}
@@ -86,13 +86,7 @@
   {% if not data.code and g.total > g.rows | length %}
   <p class="small"><a href="{{ qs(params, code=c.code, page=None) }}">Show all {{ g.total | num }} →</a></p>
   {% endif %}
-  {% if data.code and g.pages > 1 %}
-  <nav class="pager" aria-label="Pages">
-    {% if g.page > 1 %}<a href="{{ qs(params, page=g.page - 1) }}" rel="prev">← Prev</a>{% else %}<span class="muted">← Prev</span>{% endif %}
-    <span>Page {{ g.page }} of {{ g.pages }}</span>
-    {% if g.page < g.pages %}<a href="{{ qs(params, page=g.page + 1) }}" rel="next">Next →</a>{% else %}<span class="muted">Next →</span>{% endif %}
-  </nav>
-  {% endif %}
+  {% if data.code %}{{ pager(g, params) }}{% endif %}
 </details>
 {% else %}
 <section class="card empty-inline">

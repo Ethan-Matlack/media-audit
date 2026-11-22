@@ -86,13 +86,22 @@ def sync_libraries(conn: sqlite3.Connection, config: Config, now: str) -> dict[s
 
     Libraries removed from the config are disabled, not deleted, so their history stays.
     """
+    from media_audit.remap import norm, rewrite_root
+
     with transaction(conn):
+        known = {r["name"]: r for r in conn.execute("SELECT id, name, path FROM libraries")}
         for lib in config.libraries:
+            # Same library, new folder (renamed or moved): keep its files and history.
+            row = known.get(lib.name)
+            if row is not None and norm(row["path"]) != norm(lib.path):
+                moved = rewrite_root(conn, row["id"], row["path"], str(lib.path))
+                log.info("library %s moved from %s to %s (%d files kept)",
+                         lib.name, row["path"], lib.path, moved)  # fmt: skip
             conn.execute(
                 "INSERT INTO libraries (name, path, type, enabled, created_at) "
                 "VALUES (?, ?, ?, ?, ?) ON CONFLICT (name) DO UPDATE SET path = excluded.path, "
                 "type = excluded.type, enabled = excluded.enabled",
-                (lib.name, str(lib.path), lib.type, int(lib.enabled), now),
+                (lib.name, norm(lib.path), lib.type, int(lib.enabled), now),
             )
         names = [lib.name for lib in config.libraries]
         conn.execute(

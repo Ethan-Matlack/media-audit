@@ -204,6 +204,7 @@ class Page:
     total: int
     page: int
     pages: int
+    total_bytes: int = 0
 
 
 def _page(total: int, page: int) -> tuple[int, int]:
@@ -370,18 +371,84 @@ FILE_SORTS = {
 }
 
 # Filter name -> (SQL condition, how to turn the query value into parameters)
-_EQ_FILTERS = {
-    "library": "l.name = ?",
-    "resolution": "v.resolution_class = ?",
-    "codec": "v.codec = ?",
-    "dr": "v.dynamic_range = ?",
-    "group": "r.release_group = ?",
-    "source": "r.source = ?",
-    "container": "v.container = ?",
-}
+# --------------------------------------------------------------------------- file filters
+#
+# Each filterable field ("facet") takes any number of values and an "is not" switch:
+#
+#     /files?alang=en&alang=ja            files with an English or a Japanese audio track
+#     /files?library=anime&alang=en&alang_not=1   anime files with no English audio track
+#
+# Two rules keep the answers right:
+# * "is not" on a per-file field also matches files where the field is missing (a plain
+#   NOT IN would silently drop them, e.g. unreadable files from "not 1080p").
+# * Track fields (audio, audio language, subtitle language) ask whether *any* track
+#   matches; "is not" means no track does. A track with an unknown language is never
+#   counted as any language, so it doesn't hide a file from "not en"; pick "(unknown)"
+#   to filter on it.
+
+NONE = "(none)"  # the value for "missing" in per-file fields (shown as unknown / none)
+UNKNOWN_LANG = "und"
 
 
-def _file_filters(q: Mapping[str, str]) -> tuple[str, list[Any]]:
+@dataclass(frozen=True)
+class Facet:
+    key: str  # URL parameter
+    label: str
+    expr: str  # SQL for the value: a column, or a track column (alias t)
+    track_table: str | None = None  # set for fields that live on tracks
+    none_label: str = "(unknown)"
+
+    @property
+    def is_track(self) -> bool:
+        return self.track_table is not None
+
+
+FACETS: tuple[Facet, ...] = (
+    Facet("library", "Library", "l.name"),
+    Facet("resolution", "Resolution", "v.resolution_class"),
+    Facet("dr", "Dynamic range", "v.dynamic_range"),
+    Facet("codec", "Video codec", "v.codec"),
+    Facet("audio", "Audio", "coalesce(t.commercial_name, t.codec)", "audio_tracks"),
+    Facet("alang", "Audio language", f"coalesce(t.language, '{UNKNOWN_LANG}')",
+          "audio_tracks"),
+    Facet("slang", "Subtitle language", f"coalesce(t.language, '{UNKNOWN_LANG}')",
+          "subtitle_tracks"),
+    Facet("container", "Container", "v.container"),
+    Facet("source", "Source", "r.source", none_label="(none)"),
+    Facet("group", "Release group", "r.release_group", none_label="(none)"),
+)  # fmt: skip
+FACET_KEYS = {f.key: f for f in FACETS}
+_RES_ORDER = {"4320p": 0, "2160p": 1, "1080p": 2, "720p": 3, "SD": 4}
+
+
+def values(q: Mapping[str, str], key: str) -> list[str]:
+    """All non-empty values of a query parameter (works on plain dicts too)."""
+    getlist = getattr(q, "getlist", None)
+    raw = getlist(key) if getlist else ([q[key]] if q.get(key) else [])
+    return [v for v in dict.fromkeys(raw) if v]
+
+
+def negated(q: Mapping[str, str], key: str) -> bool:
+    return q.get(f"{key}_not") == "1"
+
+
+def _facet_condition(facet: Facet, vals: list[str], negate: bool) -> tuple[str, list[Any]]:
+    plain = [v for v in vals if v != NONE]
+    parts, params = [], list(plain)
+    if plain:
+        parts.append(f"{facet.expr} IN ({','.join('?' * len(plain))})")
+    if NONE in vals and not facet.is_track:
+        parts.append(f"{facet.expr} IS NULL")
+    match = "(" + " OR ".join(parts) + ")" if parts else "0"
+    if facet.is_track:
+        exists = f"EXISTS (SELECT 1 FROM {facet.track_table} t WHERE t.file_id = f.id AND {match})"
+        return (f"NOT {exists}" if negate else exists), params
+    # coalesce: a missing value is "not in" anything, so it stays in for "is not".
+    return (f"NOT coalesce({match}, 0)" if negate else match), params
+
+
+def _file_filters(q: Mapping[str, str], skip: str | None = None) -> tuple[str, list[Any]]:
+    """WHERE clause for the Files filters. ``skip`` leaves one facet out (live counts)."""
     where = ["f.deleted_at IS NULL"]
     params: list[Any] = []
     role = q.get("role", "main")
@@ -393,31 +460,31 @@ def _file_filters(q: Mapping[str, str]) -> tuple[str, list[Any]]:
         where.append("f.role = ?")
         params.append(role)
     if q.get("q"):
-        where.append("f.rel_path LIKE ?")
+        where.append("f.rel_path NOT LIKE ?" if negated(q, "q") else "f.rel_path LIKE ?")
         params.append(f"%{q['q']}%")
     if q.get("folder"):
         # Everything in one folder (and its subfolders), matched as a literal prefix.
         folder = q["folder"].strip("/") + "/"
         where.append("substr(f.rel_path, 1, ?) = ?")
         params.extend([len(folder), folder])
-    for key, cond in _EQ_FILTERS.items():
-        if q.get(key):
-            if q[key] == "(none)":
-                where.append(cond.replace("= ?", "IS NULL"))
-            else:
-                where.append(cond)
-                params.append(q[key])
-    if q.get("audio"):
-        where.append(
-            "EXISTS (SELECT 1 FROM audio_tracks a WHERE a.file_id = f.id AND "
-            "coalesce(a.commercial_name, a.codec) = ?)"
-        )
-        params.append(q["audio"])
-    if q.get("alang"):
-        where.append(
-            "EXISTS (SELECT 1 FROM audio_tracks a WHERE a.file_id = f.id AND a.language = ?)"
-        )
-        params.append(q["alang"])
+    # Drill-down from a grouped row: one title (or files without one), one season.
+    title, season = q.get("title"), q.get("season")
+    if title == "none":
+        where.append("f.title_id IS NULL")
+    elif title and title.isdigit():
+        where.append("f.title_id = ?")
+        params.append(int(title))
+    if season == "none":
+        where.append(f"{SEASON_EXPR} IS NULL")
+    elif season and season.isdigit():
+        where.append(f"{SEASON_EXPR} = ?")
+        params.append(int(season))
+    for facet in FACETS:
+        vals = values(q, facet.key)
+        if vals and facet.key != skip:
+            cond, cond_params = _facet_condition(facet, vals, negated(q, facet.key))
+            where.append(cond)
+            params.extend(cond_params)
     if q.get("remux") == "1":
         where.append("r.is_remux = 1")
     if q.get("errors") == "1":
@@ -437,12 +504,18 @@ _FILE_FROM = """
     JOIN libraries l ON l.id = f.library_id
     LEFT JOIN video_info v ON v.file_id = f.id
     LEFT JOIN release_info r ON r.file_id = f.id
+    LEFT JOIN titles ti ON ti.id = f.title_id
+    LEFT JOIN seasons se ON se.id = f.season_id
 """
+# The season a file belongs to (shows only): its season folder, else its SxxEyy.
+SEASON_EXPR = "(CASE WHEN ti.kind = 'show' THEN coalesce(se.season_number, f.season_number) END)"
 
 
 def files(conn: sqlite3.Connection, q: Mapping[str, str]) -> Page:
     where, params = _file_filters(q)
-    total = conn.execute(f"SELECT count(*) {_FILE_FROM} WHERE {where}", params).fetchone()[0]
+    total, total_bytes = conn.execute(
+        f"SELECT count(*), coalesce(sum(f.size_bytes), 0) {_FILE_FROM} WHERE {where}", params
+    ).fetchone()
     page, pages = _page(total, _int(q.get("page")))
     sort = FILE_SORTS.get(q.get("sort", ""), FILE_SORTS["size"])
     direction = "ASC" if q.get("dir") == "asc" else "DESC"
@@ -454,44 +527,172 @@ def files(conn: sqlite3.Connection, q: Mapping[str, str]) -> Page:
         )
     )
     attach_tracks(conn, rows)
-    return Page(rows, total, page, pages)
+    return Page(rows, total, page, pages, total_bytes)
 
 
-def file_filter_options(conn: sqlite3.Connection) -> dict[str, list[str]]:
-    def distinct(sql: str) -> list[str]:
-        return [str(r[0]) for r in conn.execute(sql) if r[0] is not None]
+# --------------------------------------------------------------------------- grouped view
 
-    live = "JOIN files f ON f.id = x.file_id WHERE f.deleted_at IS NULL"
-    return {
-        "resolution": distinct(
-            f"SELECT DISTINCT x.resolution_class FROM video_info x {live} "
-            "ORDER BY x.resolution_class"
-        ),
-        "codec": distinct(
-            f"SELECT x.codec FROM video_info x {live} GROUP BY 1 ORDER BY count(*) DESC"
-        ),
-        "dr": distinct(
-            f"SELECT x.dynamic_range FROM video_info x {live} GROUP BY 1 ORDER BY count(*) DESC"
-        ),
-        "container": distinct(
-            f"SELECT x.container FROM video_info x {live} GROUP BY 1 ORDER BY count(*) DESC"
-        ),
-        "source": distinct(
-            f"SELECT x.source FROM release_info x {live} GROUP BY 1 ORDER BY count(*) DESC"
-        ),
-        "audio": distinct(
-            f"SELECT coalesce(x.commercial_name, x.codec) FROM audio_tracks x "
-            f"{live} GROUP BY 1 ORDER BY count(DISTINCT x.file_id) DESC"
-        ),
-        "alang": distinct(
-            f"SELECT x.language FROM audio_tracks x {live} GROUP BY 1 "
-            "ORDER BY count(DISTINCT x.file_id) DESC"
-        ),
-        "group": distinct(
-            f"SELECT x.release_group FROM release_info x {live} GROUP BY 1 "
-            "ORDER BY count(*) DESC LIMIT 300"
-        ),
-    }
+GROUP_MODES = ("title", "season")
+GROUP_SORTS = {
+    "size": "bytes",
+    "count": "n",
+    "name": "lower(coalesce(ti.name, '~')), ti.year, season",
+    "library": "l.name, lower(coalesce(ti.name, '~'))",
+}
+
+
+def group_mode(q: Mapping[str, str]) -> str | None:
+    mode = q.get("by")  # not "group": that's the release-group filter
+    return mode if mode in GROUP_MODES else None
+
+
+def _group_key(mode: str) -> str:
+    season = SEASON_EXPR if mode == "season" else "NULL"
+    return f"l.name, f.title_id, {season}"
+
+
+def _distinct(joined: str | None, order: dict[str, int] | None = None) -> list[str]:
+    vals = sorted(set((joined or "").split(",")) - {""})
+    return sorted(vals, key=lambda v: (order.get(v, 9), v)) if order else vals
+
+
+def file_groups(conn: sqlite3.Connection, q: Mapping[str, str], *,
+                paged: bool = True) -> dict[str, Any]:  # fmt: skip
+    """Matching files grouped by title or by season, with how many of each group's files
+    match ("22 of 22": the whole season) and the values they have."""
+    mode = group_mode(q) or "season"
+    where, params = _file_filters(q)
+    key = _group_key(mode)
+    base = f"{_FILE_FROM} WHERE {where} GROUP BY {key}"
+    total, titles, n_files, n_bytes = conn.execute(
+        "SELECT count(*), count(DISTINCT coalesce(title_id, -1)), coalesce(sum(n), 0), "
+        "coalesce(sum(bytes), 0) FROM (SELECT f.title_id AS title_id, count(*) AS n, "
+        f"sum(f.size_bytes) AS bytes {base})",
+        params,
+    ).fetchone()
+    page, pages = _page(total, _int(q.get("page"))) if paged else (1, 1)
+    sort = GROUP_SORTS.get(q.get("sort", ""), GROUP_SORTS["size"])
+    direction = "ASC" if q.get("dir") == "asc" else "DESC"  # the column headers set dir
+    limit = "LIMIT ? OFFSET ?" if paged else ""
+    rows = _rows(conn.execute(
+        f"""SELECT l.name AS library, f.title_id, ti.name AS title_name, ti.year AS title_year,
+                   ti.kind, {SEASON_EXPR if mode == "season" else "NULL"} AS season,
+                   count(*) AS n, sum(f.size_bytes) AS bytes,
+                   group_concat(DISTINCT v.resolution_class) AS resolutions,
+                   group_concat(DISTINCT v.codec) AS codecs,
+                   group_concat(DISTINCT r.release_group) AS release_groups
+            {base} ORDER BY {sort} {direction}, {key} {limit}""",
+        [*params, PAGE_SIZE, (page - 1) * PAGE_SIZE] if paged else params,
+    ))  # fmt: skip
+    _attach_group_details(conn, q, mode, rows, where, params)
+    return {"mode": mode, "rows": rows, "total": total, "titles": titles, "files": n_files,
+            "bytes": n_bytes, "page": page, "pages": pages}  # fmt: skip
+
+
+def _attach_group_details(conn: sqlite3.Connection, q: Mapping[str, str], mode: str,
+                          rows: list[dict[str, Any]], where: str,
+                          params: list[Any]) -> None:  # fmt: skip
+    """Per group: all its files (the "of M"), audio languages, and display values."""
+    if not rows:
+        return
+    key = _group_key(mode)
+    season = SEASON_EXPR if mode == "season" else "NULL"
+    ids = sorted({r["title_id"] for r in rows if r["title_id"] is not None})
+    in_ids = f"f.title_id IN ({','.join('?' * len(ids))})" if ids else "0"
+    scope = f"(({in_ids}) OR f.title_id IS NULL)"
+
+    def keyed(sql: str, args: list[Any]) -> dict[tuple[Any, ...], Any]:
+        return {(r[0], r[1], r[2]): r[3] for r in conn.execute(sql, args)}
+
+    # "of M": every file in the group that the Show setting includes, ignoring the filters.
+    role_where, role_params = _file_filters({"role": q.get("role", "main")})
+    of = keyed(
+        f"SELECT l.name, f.title_id, {season}, count(*) {_FILE_FROM} "
+        f"WHERE {role_where} AND {scope} GROUP BY {key}",
+        [*role_params, *ids],
+    )
+    langs = keyed(f"SELECT l.name, f.title_id, {season}, group_concat(DISTINCT a.language) "
+                  f"{_FILE_FROM} JOIN audio_tracks a ON a.file_id = f.id "
+                  f"WHERE {where} AND {scope} GROUP BY {key}", [*params, *ids])  # fmt: skip
+    for r in rows:
+        k = (r["library"], r["title_id"], r["season"])
+        r["of"] = of.get(k, r["n"])
+        r["audio_languages"] = [("(unknown)" if v == UNKNOWN_LANG else v)
+                                for v in _distinct(langs.get(k))]  # fmt: skip
+        r["resolutions"] = _distinct(r["resolutions"], _RES_ORDER)
+        r["codecs"] = _distinct(r["codecs"])
+        r["release_groups"] = _distinct(r["release_groups"])
+
+
+GROUP_CSV_COLUMNS = ["library", "title", "year", "season", "matching_files", "files_in_group",
+                     "size_bytes", "resolutions", "video_codecs", "audio_languages",
+                     "release_groups", "title_id"]  # fmt: skip
+
+
+def file_groups_csv_rows(conn: sqlite3.Connection, q: Mapping[str, str]) -> Iterator[list[Any]]:
+    yield GROUP_CSV_COLUMNS
+    for r in file_groups(conn, q, paged=False)["rows"]:
+        yield [r["library"], r["title_name"] or "", r["title_year"] or "",
+               "" if r["season"] is None else r["season"], r["n"], r["of"], r["bytes"],
+               " ".join(r["resolutions"]), " ".join(r["codecs"]),
+               " ".join(r["audio_languages"]), " ".join(r["release_groups"]),
+               r["title_id"] or ""]  # fmt: skip
+
+
+def title_label(conn: sqlite3.Connection, title_id: str | None, season: str | None) -> str | None:
+    """'Attack on Titan (2013) · Season 3' for the drill-down chip."""
+    if title_id == "none":
+        name = "(no title)"
+    elif title_id and title_id.isdigit():
+        row = conn.execute(
+            "SELECT name, year FROM titles WHERE id = ?", (int(title_id),)
+        ).fetchone()
+        name = (
+            f"{row['name']} ({row['year']})"
+            if row and row["year"]
+            else (row["name"] if row else "?")
+        )
+    else:
+        return None
+    if season and season.isdigit():
+        name += " · " + ("Specials" if season == "0" else f"Season {season}")
+    return name
+
+
+def facet_counts(conn: sqlite3.Connection, q: Mapping[str, str]) -> dict[str, list[dict[str, Any]]]:
+    """Each filter's values with how many files have them, given all the *other* filters.
+
+    So with Library: anime selected, the audio-language list counts anime files only,
+    while the library list still shows every library (to switch or add one).
+    """
+    out: dict[str, list[dict[str, Any]]] = {}
+    for facet in FACETS:
+        where, params = _file_filters(q, skip=facet.key)
+        if facet.is_track:
+            sql = (
+                f"SELECT {facet.expr} AS value, count(DISTINCT f.id) AS n {_FILE_FROM} "
+                f"JOIN {facet.track_table} t ON t.file_id = f.id WHERE {where} GROUP BY 1"
+            )
+        else:
+            sql = (
+                f"SELECT {facet.expr} AS value, count(*) AS n {_FILE_FROM} WHERE {where} GROUP BY 1"
+            )
+        rows = [{"value": NONE if r["value"] is None else str(r["value"]), "count": r["n"]}
+                for r in conn.execute(sql, params)]  # fmt: skip
+        selected = values(q, facet.key)
+        present = {r["value"] for r in rows}
+        rows += [{"value": v, "count": 0} for v in selected if v not in present]
+        if facet.key == "resolution":
+            rows.sort(key=lambda r: (_RES_ORDER.get(r["value"], 9), r["value"]))
+        else:
+            rows.sort(key=lambda r: (r["value"] in (NONE, UNKNOWN_LANG), -r["count"], r["value"]))
+        for r in rows:
+            r["label"] = (facet.none_label if r["value"] == NONE
+                          else "(unknown)" if r["value"] == UNKNOWN_LANG and facet.key in
+                          {"alang", "slang"} else r["value"])  # fmt: skip
+            r["selected"] = r["value"] in selected
+        out[facet.key] = rows
+    return out
 
 
 def attach_tracks(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:

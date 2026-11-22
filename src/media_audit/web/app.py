@@ -34,7 +34,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from media_audit import __version__, cleanup
+from media_audit import __version__, cleanup, remap
 from media_audit.build import asset_tag, build_label, channel, display_version
 from media_audit.config import ConfigError
 from media_audit.db import connect, transaction, utcnow
@@ -117,15 +117,24 @@ def audio_label(a: Mapping[str, Any]) -> str:
     return f"{name} {a.get('channels_label') or ''}".strip()
 
 
+def _pairs(params: Mapping[str, str]) -> list[tuple[str, str]]:
+    """Every (key, value) pair, keeping repeated keys (``?alang=en&alang=ja``)."""
+    multi = getattr(params, "multi_items", None)
+    return list(multi()) if multi else list(params.items())
+
+
 def query_string(params: Mapping[str, str], **changes: Any) -> str:
-    """The current query string with some keys changed (None removes a key)."""
-    merged = {k: v for k, v in params.items() if v not in ("", None)}
+    """The current query string with some keys changed.
+
+    None or "" removes a key; a list sets several values for it.
+    """
+    pairs = [(k, v) for k, v in _pairs(params) if v not in ("", None) and k not in changes]
     for key, value in changes.items():
-        if value is None or value == "":
-            merged.pop(key, None)
-        else:
-            merged[key] = str(value)
-    return ("?" + urlencode(merged)) if merged else "?"
+        if isinstance(value, list | tuple):
+            pairs.extend((key, str(v)) for v in value if v not in ("", None))
+        elif value is not None and value != "":
+            pairs.append((key, str(value)))
+    return ("?" + urlencode(pairs)) if pairs else "?"
 
 
 def parent_folder(path: str) -> str:
@@ -246,7 +255,7 @@ def _env() -> Environment:
 
 
 def _key(name: str, params: Mapping[str, str], *extra: Any) -> tuple[Any, ...]:
-    return (name, tuple(sorted(params.items())), *extra)
+    return (name, tuple(sorted(_pairs(params))), *extra)
 
 
 def create_app(service: ScanService) -> Starlette:
@@ -267,7 +276,7 @@ def create_app(service: ScanService) -> Starlette:
         )
         context = {
             "request": request,
-            "params": dict(request.query_params),
+            "params": request.query_params,  # keeps repeated keys (multi-select filters)
             "status": service.status(),
             "config_error": service.config_error(),
             "config_path": service.config_path,
@@ -391,22 +400,33 @@ def create_app(service: ScanService) -> Starlette:
 
     def files(request: Request, conn: sqlite3.Connection) -> Response:
         params = request.query_params
-        page = db.cached(_key("files", params), lambda: queries.files(conn, params))
-        options = db.cached(("file_options",), lambda: queries.file_filter_options(conn))
-        return render(request, "files.html", _conn=conn, page=page, options=options)
+        facets = db.cached(_key("facets", params), lambda: queries.facet_counts(conn, params))
+        groups = page = None
+        if queries.group_mode(params):
+            groups = db.cached(_key("groups", params), lambda: queries.file_groups(conn, params))
+        else:
+            page = db.cached(_key("files", params), lambda: queries.files(conn, params))
+        scope = queries.title_label(conn, params.get("title"), params.get("season"))
+        return render(request, "files.html", _conn=conn, page=page, groups=groups,
+                      facets=facets, facet_defs=queries.FACETS, scope=scope)  # fmt: skip
 
     async def files_csv(request: Request) -> Response:
         path = db_path()
         if path is None or not path.exists():
             return PlainTextResponse("no database yet", status_code=404)
-        params = dict(request.query_params)
+        params = request.query_params
 
         def stream() -> Iterator[str]:
             buf = io.StringIO()
             writer = csv.writer(buf)
             with db.connection(path) as conn:
                 assert conn is not None
-                for i, row in enumerate(queries.files_csv_rows(conn, params)):
+                rows = (
+                    queries.file_groups_csv_rows
+                    if queries.group_mode(params)
+                    else queries.files_csv_rows
+                )(conn, params)
+                for i, row in enumerate(rows):
                     writer.writerow(row)
                     if i % 500 == 0:
                         yield buf.getvalue()
@@ -513,7 +533,131 @@ def create_app(service: ScanService) -> Starlette:
     def _scans(request: Request) -> Response:
         with db.connection(db_path()) as conn:
             history = db.cached(("scans",), lambda: queries.scans(conn)) if conn else []
-            return render(request, "scans.html", _conn=conn, history=history)
+            libs, suggested = [], []
+            if conn is not None:
+                try:
+                    cfg = service.config()
+                    libs = remap.library_rows(conn, cfg)
+                    suggested = remap.suggestions(conn, cfg)
+                except ConfigError:
+                    pass
+            return render(request, "scans.html", _conn=conn, history=history,
+                          library_rows=libs, suggestions=suggested)  # fmt: skip
+
+    # ------------------------------------------------------------------ library remapping
+    def _remap_context(conn: sqlite3.Connection, library: str, path: str, name: str
+                       ) -> dict[str, Any]:  # fmt: skip
+        import difflib
+
+        cfg = service.config()
+        lib = conn.execute("SELECT * FROM libraries WHERE name = ?", (library,)).fetchone()
+        ctx: dict[str, Any] = {
+            "library": lib, "path": path, "name": name or library,
+            "error": None, "comparison": None, "edit": None, "diff": [],
+        }  # fmt: skip
+        if lib is None:
+            ctx["error"] = f"There's no library called {library!r}."
+            return ctx
+        if not path:
+            best = next((x for x in remap.suggestions(conn, cfg) if x.library == library), None)
+            if best:
+                ctx.update(path=best.new_path, name=name or best.name)
+            return ctx
+        try:
+            _, merge = remap.check_remap(conn, library, path, ctx["name"])
+        except remap.RemapError as exc:
+            ctx["error"] = str(exc)[:1].upper() + str(exc)[1:] + "."
+            return ctx
+        ctx["merge"] = [m["name"] for m in merge]
+        ctx["comparison"] = remap.compare(conn, lib["id"], path)
+        ctx["ignores"] = conn.execute("SELECT count(*) FROM flag_ignores").fetchone()[0]
+        edit = remap.plan_config_edit(service.config_path, library, ctx["name"], path,
+                                      lib["type"])  # fmt: skip
+        ctx["edit"] = edit
+        if edit.changed and edit.new_text is not None:
+            ctx["diff"] = [line for line in difflib.unified_diff(
+                edit.old_text.splitlines(), edit.new_text.splitlines(), lineterm="", n=1)
+                if not line.startswith(("---", "+++"))]  # fmt: skip
+        return ctx
+
+    def remap_page(request: Request, conn: sqlite3.Connection) -> Response:
+        q = request.query_params
+        try:
+            ctx = _remap_context(conn, q.get("library", ""), remap.norm(q["path"]) if
+                                 q.get("path") else "", q.get("name", "").strip())  # fmt: skip
+        except ConfigError:
+            return render(request, "remap.html", _conn=conn, library=None,
+                          error="Fix the config problem above first.")  # fmt: skip
+        return render(request, "remap.html", _conn=conn, **ctx)
+
+    def _remap_post(request: Request, form: dict[str, str]) -> Response:
+        from media_audit.pipeline import ScanLocked, scan_lock
+
+        library, action = form.get("library", ""), form.get("action", "")
+        path = remap.norm(form["path"]) if form.get("path") else ""
+        name = form.get("name", "").strip() or library
+        dbp = db_path()
+        if dbp is None or not dbp.exists():
+            return PlainTextResponse("no database yet", status_code=404)
+        conn = connect(dbp, migrate=False)
+        try:
+            if action == "dismiss":
+                remap.dismiss(conn, library, path)
+                return RedirectResponse("/scans", status_code=303)
+            if service.running:
+                return _remap_error(request, library, path, name,
+                                    "A scan is running. Remap once it has finished.")  # fmt: skip
+            lib = conn.execute("SELECT type FROM libraries WHERE name = ?", (library,)).fetchone()
+            if lib is None:
+                return _remap_error(request, library, path, name, "That library is gone.")
+            try:
+                remap.check_remap(conn, library, path, name)
+            except remap.RemapError as exc:
+                return _remap_error(request, library, path, name, f"{exc}.")
+            edit = remap.plan_config_edit(service.config_path, library, name, path, lib["type"])
+            if edit.new_text is None:
+                return _remap_error(request, library, path, name,
+                                    f"config.yml wasn't changed: {edit.reason}.")  # fmt: skip
+            now = datetime.now()
+            try:
+                with scan_lock(dbp):
+                    config_backup = remap.write_config(edit, now)
+                    try:
+                        result = remap.apply_remap(conn, dbp, library, path, name, now=now)
+                    except Exception:
+                        if config_backup is not None and edit.path is not None:
+                            edit.path.write_text(edit.old_text, encoding="utf-8")
+                        raise
+            except ScanLocked:
+                return _remap_error(request, library, path, name,
+                                    "A scan is running. Remap once it has finished.")  # fmt: skip
+            except remap.RemapError as exc:
+                return _remap_error(request, library, path, name, f"{exc}.")
+        finally:
+            conn.close()
+        log.info("library %s remapped to %s as %s (%d files)", library, result.new_path,
+                 result.library, result.files)  # fmt: skip
+        db.clear()
+        started, _ = service.start_scan("remap")
+        with db.connection(dbp) as rconn:
+            return render(request, "remap_done.html", _conn=rconn, result=result,
+                          config_backup=config_backup, config_changed=edit.changed,
+                          started=started)  # fmt: skip
+
+    def _remap_error(request: Request, library: str, path: str, name: str,
+                     message: str) -> Response:  # fmt: skip
+        with db.connection(db_path()) as conn:
+            assert conn is not None
+            ctx = _remap_context(conn, library, path, name)
+            ctx["post_error"] = message
+            return render(request, "remap.html", _conn=conn, **ctx)
+
+    async def remap_post(request: Request) -> Response:
+        if not _same_origin(request):
+            return PlainTextResponse("cross-origin request refused", status_code=403)
+        body = (await request.body()).decode("utf-8", "replace")
+        form = {k: v[-1] for k, v in parse_qs(body).items()}
+        return await run_in_threadpool(_remap_post, request, form)
 
     async def scans(request: Request) -> Response:
         return await run_in_threadpool(_scans, request)
@@ -564,6 +708,8 @@ def create_app(service: ScanService) -> Starlette:
         Route("/issues/cleanup", cleanup_post, methods=["POST"]),
         Route("/issues/cleanup/saved/{name}", cleanup_saved),
         Route("/scans", scans),
+        Route("/libraries/remap", with_db(remap_page)),
+        Route("/libraries/remap", remap_post, methods=["POST"]),
         Route("/scans/run", scan_now, methods=["POST"]),
         Route("/scans/stop", scan_stop, methods=["POST"]),
         Route("/api/status", api_status),
@@ -583,7 +729,7 @@ def create_app(service: ScanService) -> Starlette:
                 db.cached(("overview", None), lambda: queries.overview(conn, None))
                 db.cached(_key("titles", empty), lambda: queries.titles(conn, empty))
                 db.cached(_key("files", empty), lambda: queries.files(conn, empty))
-                db.cached(("file_options",), lambda: queries.file_filter_options(conn))
+                db.cached(_key("facets", empty), lambda: queries.facet_counts(conn, empty))
                 db.cached(("issue_count",), lambda: queries.open_issue_count(conn))
                 db.cached(_key("issues", empty), lambda: queries.issues(conn, empty))
         except Exception:  # only an optimisation; pages compute on demand anyway

@@ -1,7 +1,6 @@
 # media-audit
 
-> Working name. Status: **Phases 0–2 + web UI** (scanner, analyzer, rules, titles,
-> issues, web UI with scheduled scans).
+> Status: In-development. Working, but not yet fully-featured or guaranteed stable.
 
 A self-hosted tool that scans a media library on disk and reports what's actually in
 it: storage per movie/show/season and technical details for every file (container,
@@ -140,8 +139,28 @@ uv run media-audit serve          # web UI on http://localhost:8484 + scheduled 
 | `scan [-l LIB] [--no-analyze] [--retry-errors] [-w N]` | walk libraries, analyze new/changed files, rebuild titles |
 | `rederive` | re-apply all rules to stored MediaInfo data; reads no media files |
 | `stats [-l LIB] [--json]` | library breakdowns |
+| `remap-library LIB --path DIR [--name NEW] [--dry-run]` | point a library at its renamed/moved folder, keeping its history |
 | `check-config` | validate config, library paths, overlaps, libmediainfo |
 | `init-config [--media-root DIR] [--force]` | write a starter config from the folders in DIR |
+
+### Renamed or moved library folders
+
+Rename `movies` to `movies2` on disk and media-audit would otherwise see a missing
+library and a new one, and read every file again. Instead:
+
+* **Scans page:** when a library's folder is gone and another folder holds the same files
+  (title folder names, then the sizes of a sample of files), a banner suggests the
+  remap. **Review remap…** shows how much matches, what changes in config.yml (a diff;
+  comments and layout are kept) and then **Remap**: the library points at the new folder
+  (and name, if you change it), its stored paths move with it, history, analysis and
+  ignored issues are kept, and a quick scan confirms it. The database and config.yml are
+  backed up first (`*.bak-…` next to them). Any library can be remapped by hand from
+  the **Libraries** list on the same page; **It's a different library** hides a wrong
+  suggestion.
+* **Same name, new path:** change `path:` in the config and the next scan follows the
+  library to its new folder without re-reading anything.
+* If config.yml can't be edited safely (e.g. libraries come from `MEDIA_AUDIT_LIBRARIES`),
+  nothing is changed and the page shows the lines to change by hand.
 
 ### Rescans are cheap
 
@@ -280,6 +299,27 @@ won't create a script. It needs bash and GNU coreutils/findutils (Unraid and any
 Linux server have them).
 
 ## Exploring the data
+
+The **Files** page is for drilling down. Every filter (library, resolution, dynamic
+range, codec, audio, audio and subtitle language, container, source, release group)
+takes several values and an **Is / Is not** switch, and lists each value with how many
+files have it given the *other* filters. For example, *anime files with no English
+audio track*: Library = anime, Audio language → Has none of → en.
+
+* "Is not" includes files where the value is unknown (e.g. unreadable files for
+  "not 1080p"); pick "(unknown)" to filter on those directly.
+* Audio and subtitle filters look at every track: "Has none of en" keeps a
+  Japanese-only file and one with no audio, but not a dual-audio one. An untagged track
+  is "(unknown)", never assumed to be English.
+* **Group by Titles or Seasons** collapses the list into one row per show/movie or per
+  season (movies stay one row each), with the files that match out of all the files in
+  that group: "22 of 22" means the whole season pack, "1 of 14" one odd episode. Each
+  row shows the group's resolutions, codecs, audio languages and release groups, and
+  **Files →** lists just that group's matching files. Export CSV exports one row per
+  group when grouped.
+* Path can be "contains" or "doesn't contain". The page shows the total size of the
+  matching files, active filters as removable chips, and the URL is shareable; Export
+  CSV uses the same filters.
 
 The web UI covers the common questions. For anything else, the SQLite database is
 plain SQL: open it with `sqlite3`, or run the Datasette profile in compose. The main

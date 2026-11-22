@@ -67,6 +67,11 @@ def _scan(service: ScanService) -> dict[str, Any]:
 # --------------------------------------------------------------------------- service
 
 
+def _count(page: str) -> int:
+    """The number of files the Files page says it found."""
+    return int(page.split('class="result-count"><strong>')[1].split("<")[0].replace(",", ""))
+
+
 def test_service_scan_and_rescan(config_file: Path) -> None:
     service = _service(config_file)
     first = _scan(service)
@@ -202,9 +207,9 @@ def test_titles_and_detail(client: TestClient) -> None:
 
 
 def test_files_filters_and_csv(client: TestClient) -> None:
-    assert "7 files" in client.get("/files").text  # main videos
-    assert "1 files" in client.get("/files?resolution=2160p").text
-    assert "1 files" in client.get("/files?errors=1&role=video").text
+    assert _count(client.get("/files").text) == 7  # main videos
+    assert _count(client.get("/files?resolution=2160p").text) == 1
+    assert _count(client.get("/files?errors=1&role=video").text) == 1
     assert "corrupt" in client.get("/files?errors=1&role=video").text
     r = client.get("/files.csv?library=movies")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
@@ -220,12 +225,13 @@ def test_files_folder_link_lists_the_whole_folder(client: TestClient) -> None:
     href = page.split('class="ref-folder" href="')[1].split('"')[0].replace("&amp;", "&")
     assert "folder=Heat+%281995%29" in href and "role=all" in href and "q=" not in href
     folder = client.get(href).text
-    assert "3 files" in folder and "Heat (1995).en.srt" in folder and "Alien" not in folder
-    assert "all folders" in folder
+    assert _count(folder) == 3 and "Heat (1995).en.srt" in folder and "Alien" not in folder
+    assert "In Heat (1995)/" in folder  # shown as an active filter, removable
     # Matched as a prefix, so subfolders count and a partial folder name doesn't.
-    assert "3 files" in client.get("/files?library=tv&role=all&folder=Show (2010)").text
-    assert "2 files" in client.get("/files?library=tv&role=all&folder=Show (2010)/Season 01").text
-    assert "0 files" in client.get("/files?library=tv&role=all&folder=Show").text
+    assert _count(client.get("/files?library=tv&role=all&folder=Show (2010)").text) == 3
+    show = "/files?library=tv&role=all&folder=Show (2010)/Season 01"
+    assert _count(client.get(show).text) == 2
+    assert _count(client.get("/files?library=tv&role=all&folder=Show").text) == 0
 
 
 def test_scan_now_endpoint(config_file: Path) -> None:

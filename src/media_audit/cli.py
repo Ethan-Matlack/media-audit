@@ -118,6 +118,64 @@ def cmd_rederive(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_remap_library(args: argparse.Namespace) -> int:
+    from datetime import datetime
+
+    from media_audit import remap
+    from media_audit.config import find_config_path
+    from media_audit.pipeline import ScanLocked, scan_lock
+
+    cfg = _load(args)
+    conn = _open_db(cfg)
+    name = args.name or args.library
+    lib = conn.execute("SELECT id, type FROM libraries WHERE name = ?", (args.library,)).fetchone()
+    try:
+        if lib is None:
+            raise remap.RemapError(f"there's no library called {args.library!r}")
+        remap.check_remap(conn, args.library, args.path, name)
+    except remap.RemapError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    c = remap.compare(conn, lib["id"], args.path)
+    print(f"{c.path}: {c.folders_matched} of {c.folders_total} title folders, "
+          f"{c.files_matched} of {c.files_checked} sampled files match"
+          f"{'' if c.likely else ' (does NOT look like the same library)'}")  # fmt: skip
+    edit = remap.plan_config_edit(find_config_path(args.config), args.library, name, args.path,
+                                  lib["type"])  # fmt: skip
+    if edit.new_text is None:
+        print(
+            f"error: config.yml can't be changed automatically: {edit.reason}.\n"
+            f"Change the library to:\n{edit.snippet}\nthen run this again.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.dry_run:
+        print(
+            "dry run: nothing changed" + ("; config.yml would be updated" if edit.changed else "")
+        )
+        return 0
+    now = datetime.now()
+    try:
+        with scan_lock(cfg.database):
+            backup = remap.write_config(edit, now)
+            try:
+                result = remap.apply_remap(conn, cfg.database, args.library, args.path, name,
+                                           now=now)  # fmt: skip
+            except Exception:
+                if backup is not None and edit.path is not None:
+                    edit.path.write_text(edit.old_text, encoding="utf-8")
+                raise
+    except ScanLocked as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 3
+    print(f"{result.library} now points at {result.new_path} ({result.files} files kept)")
+    if result.merged:
+        print(f"merged: {', '.join(result.merged)}")
+    print(f"database backup: {result.backup}" + (f"\nconfig backup: {backup}" if backup else ""))
+    print("run a scan to confirm (it only checks sizes and dates)")
+    return 0
+
+
 def _print_table(
     title: str, rows: list[dict[str, Any]], total_files: int, with_bytes: bool = True
 ) -> None:
@@ -308,6 +366,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("rederive", help="re-apply rules to stored data without reading media")
     p.set_defaults(func=cmd_rederive)
+
+    p = sub.add_parser(
+        "remap-library", help="point a library at its renamed/moved folder, keeping its history"
+    )
+    p.add_argument("library", help="the library's current name")
+    p.add_argument("--path", required=True, help="the new folder")
+    p.add_argument("--name", help="a new name for the library (default: unchanged)")
+    p.add_argument("--dry-run", action="store_true", help="check and show, change nothing")
+    p.set_defaults(func=cmd_remap_library)
 
     p = sub.add_parser("stats", help="print library statistics")
     p.add_argument("-l", "--library", help="only this library")
