@@ -143,7 +143,7 @@ def settings_routes(
         return {
             "cfg": cfg, "sections": sf.SECTIONS, "value": value, "locked": locked,
             "check_groups": sf.check_groups(cfg), "all_checks": list(CHECKS.values()),
-            "presets": sf.SCHEDULE_PRESETS, "libraries": libraries,
+            "libraries": libraries,
             "found": found_folders(cfg), "mappings": explicit,
             # The mapping from cleanup.host_media_path: shown as a locked row, unless a
             # mapping in the list for the same folder takes its place.

@@ -115,13 +115,6 @@
   });
 
   // ------------------------------------------------------------ settings
-  for (const b of $$("[data-cron]")) {
-    b.addEventListener("click", () => {
-      const input = document.getElementById(b.dataset.target);
-      if (input) { input.value = b.dataset.cron; input.focus(); }
-    });
-  }
-
   // Folder picker: browse the media folders and pick one for a library.
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const guessType = (name) => (/movie|film/i.test(name) ? "movies" : /tv|show|series|anime/i.test(name) ? "tv" : "");

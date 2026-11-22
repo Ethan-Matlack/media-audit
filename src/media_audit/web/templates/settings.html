@@ -210,7 +210,6 @@
         <input id="f-{{ f.key }}" type="text" name="{{ f.key }}" value="{{ v }}" placeholder="{{ f.placeholder }}" {% if lk %}disabled{% endif %} spellcheck="false">
         {% endif %}
         {% if f.kind == "cron" %}
-        <div class="presets">{% for label, expr in presets %}<button type="button" class="button small-button" data-cron="{{ expr }}" data-target="f-{{ f.key }}" {% if lk %}disabled{% endif %}>{{ label }}</button>{% endfor %}</div>
         <p class="small muted">{% if status.schedule.next_run %}Next scheduled scan: {{ status.schedule.next_run.replace("T", " ") }}{% elif status.schedule.error %}<span class="error">{{ status.schedule.error }}</span>{% else %}No scheduled scans.{% endif %}</p>
         {% endif %}
       {% endif %}

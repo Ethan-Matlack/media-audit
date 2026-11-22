@@ -374,7 +374,6 @@ pre.diff .hunk { color: var(--text-3); }
 label.check { display: flex; flex-direction: row; align-items: center; gap: 0.45rem; font-size: 0.9rem; color: var(--text); }
 .help { margin: 0; font-size: 0.82rem; color: var(--text-3); }
 .locked { margin: 0; color: var(--warn); }
-.presets { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .check-group { border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.75rem 0.6rem; margin: 0.25rem 0; }
 .check-group legend { font-size: 0.8rem; color: var(--text-2); padding: 0 0.3rem; }
 .check-group label.check, .check-grid label.check { font-size: 0.86rem; padding: 0.1rem 0; }

@@ -37,14 +37,6 @@ class Section:
     fields: tuple[Field, ...]
 
 
-SCHEDULE_PRESETS = [
-    ("Off", "off"),
-    ("Daily 03:00", "0 3 * * *"),
-    ("Every 6 hours", "0 */6 * * *"),
-    ("Every hour", "0 * * * *"),
-    ("Weekly, Sunday 03:00", "0 3 * * 0"),
-]
-
 # fmt: off
 SECTIONS: tuple[Section, ...] = (
     Section(
@@ -56,9 +48,11 @@ SECTIONS: tuple[Section, ...] = (
                 "scan.schedule",
                 "Scan schedule",
                 "cron",
-                "When scans run by themselves: a cron expression in the container's time zone "
-                "(minute hour day month weekday), or off. Scan now on the Scans page always "
-                "works.",
+                "A cron expression: five fields, minute hour day-of-month month day-of-week, "
+                "in the container's time zone. For example 0 3 * * * is daily at 03:00, "
+                "0 */6 * * * every 6 hours, 0 3 * * 0 Sundays at 03:00. Leave it empty or type "
+                "off for no scheduled scans (Scan now on the Scans page still works).",
+                placeholder="0 3 * * *",
             ),
             Field(
                 "scan.workers",

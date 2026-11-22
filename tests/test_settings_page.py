@@ -298,3 +298,16 @@ def test_container_mapping_shows_as_a_locked_row(setup: dict[str, Any], monkeypa
     folders = client.get("/settings").text.split('id="folders"')[1].split("</section>")[0]
     assert 'class="locked-row"' not in folders
     assert _config(setup).host_path(media / "movies") == "/mnt/other/movies"
+
+
+def test_schedule_empty_or_off_turns_it_off(setup: dict[str, Any]) -> None:
+    client = setup["client"]
+    client.post("/settings/section/scanning", data={"scan.schedule": "0 4 * * *"})
+    assert _config(setup).scan.schedule == "0 4 * * *"
+    client.post("/settings/section/scanning", data={"scan.schedule": ""})
+    assert _config(setup).scan.schedule is None
+    client.post("/settings/section/scanning", data={"scan.schedule": "30 2 * * 1"})
+    client.post("/settings/section/scanning", data={"scan.schedule": "OFF"})
+    assert _config(setup).scan.schedule is None
+    page = client.get("/settings").text
+    assert "minute hour day-of-month month day-of-week" in page and "data-cron" not in page
