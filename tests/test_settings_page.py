@@ -311,3 +311,28 @@ def test_schedule_empty_or_off_turns_it_off(setup: dict[str, Any]) -> None:
     assert _config(setup).scan.schedule is None
     page = client.get("/settings").text
     assert "minute hour day-of-month month day-of-week" in page and "data-cron" not in page
+
+
+def _visible(page: str) -> set[str]:
+    """Section ids whose panel isn't hidden."""
+    import re
+
+    return {m.group(1) for m in re.finditer(
+        r'<section class="card settings-section" id="([^"]+)"[^>]*?(?<!hidden)>', page)
+        if "hidden" not in m.group(0)}  # fmt: skip
+
+
+def test_tabs(setup: dict[str, Any]) -> None:
+    client = setup["client"]
+    page = client.get("/settings").text
+    assert _visible(page) == {"libraries"}
+    assert 'data-tab="libraries"\n     aria-controls="panel-libraries" aria-selected="true"' in page
+    assert _visible(client.get("/settings?tab=general").text) == {
+        "linking", "languages", "cleanup", "web", "about"}  # fmt: skip
+    assert _visible(client.get("/settings?tab=nonsense").text) == {"libraries"}
+    # A save lands back on its own tab; a failed one shows its tab with the error.
+    r = client.post("/settings/section/languages", data={"languages.preferred_audio": "de"})
+    assert "tab=general" in str(r.url) and _visible(r.text) == {
+        "linking", "languages", "cleanup", "web", "about"}  # fmt: skip
+    r = client.post("/settings/section/issues", data={"flags.min_peers": "1"})
+    assert r.status_code == 400 and _visible(r.text) == {"issues"}

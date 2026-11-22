@@ -259,6 +259,31 @@ SECTIONS: tuple[Section, ...] = (
 SECTION_KEYS = {s.key: s for s in SECTIONS}
 
 
+# The page's tabs, and which tab each section (by id) is on.
+TABS: tuple[tuple[str, str], ...] = (
+    ("libraries", "Libraries"),
+    ("folders", "Media folders"),
+    ("scanning", "Scanning"),
+    ("issues", "Issues"),
+    ("general", "General"),
+)
+TAB_OF: dict[str, str] = {
+    "libraries": "libraries", "folders": "folders", "scanning": "scanning",
+    "issues": "issues", "linking": "general", "languages": "general", "cleanup": "general",
+    "web": "general", "about": "general",
+}  # fmt: skip
+
+
+def tab_for(*candidates: str | None) -> str:
+    """The first candidate that is a tab or a section (as its tab); else the first tab."""
+    for c in candidates:
+        if c in TAB_OF:
+            return TAB_OF[c]
+        if c in dict(TABS):
+            return c
+    return TABS[0][0]
+
+
 def current(cfg: Config, key: str) -> Any:
     node: Any = cfg
     for part in key.split("."):

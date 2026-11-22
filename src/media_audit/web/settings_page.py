@@ -152,6 +152,8 @@ def settings_routes(
             "legacy_source": st.locked("cleanup.host_media_path"),
             "suggested_mounts": suggested, "in_docker": Path("/.dockerenv").exists(),
             "saved": q.get("saved"), "message": q.get("msg"), "backup": q.get("backup"),
+            "tabs": sf.TABS, "tab_of": sf.TAB_OF,
+            "active_tab": sf.tab_for(extra.get("error_section"), q.get("tab"), q.get("saved")),
             "rescan": q.get("rescan") == "1",
             **extra,
         }  # fmt: skip
@@ -206,7 +208,7 @@ def settings_routes(
         db.clear()
 
     def done(anchor: str, message: str, backup: Path | None, *, rescan: bool = False) -> Response:
-        params = {"saved": anchor, "msg": message}
+        params = {"tab": sf.tab_for(anchor), "saved": anchor, "msg": message}
         if backup is not None:
             params["backup"] = backup.name
         if rescan:

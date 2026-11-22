@@ -185,6 +185,54 @@
     });
   }
 
+  // Settings tabs: show one tab's sections at a time. The links also work without this.
+  const tabs = $$('[role="tablist"] [data-tab]');
+  function showTab(key, focus) {
+    const tab = tabs.find((t) => t.dataset.tab === key);
+    if (!tab) return false;
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+    }
+    for (const p of $$("[data-tab-panel]")) p.hidden = p.dataset.tabPanel !== key;
+    if (focus) tab.focus();
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", key);
+    for (const k of ["saved", "msg", "backup", "rescan"]) url.searchParams.delete(k);
+    url.hash = "";
+    history.replaceState(null, "", url);
+    return true;
+  }
+  for (const t of tabs) {
+    t.addEventListener("click", (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      showTab(t.dataset.tab, false);
+    });
+    t.addEventListener("keydown", (e) => {
+      const i = tabs.indexOf(t);
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+      if (next === undefined) return;
+      e.preventDefault();
+      showTab(tabs[(next + tabs.length) % tabs.length].dataset.tab, true);
+    });
+  }
+  // A link to a section (e.g. /settings#languages) opens its tab.
+  if (tabs.length && window.location.hash) {
+    const target = document.getElementById(decodeURIComponent(window.location.hash.slice(1)));
+    const panel = target && target.closest("[data-tab-panel]");
+    if (panel && panel.hidden) {
+      for (const p of $$("[data-tab-panel]")) p.hidden = p.dataset.tabPanel !== panel.dataset.tabPanel;
+      for (const t of tabs) {
+        const on = t.dataset.tab === panel.dataset.tabPanel;
+        t.setAttribute("aria-selected", on ? "true" : "false");
+        t.tabIndex = on ? 0 : -1;
+      }
+      target.scrollIntoView({ block: "start" });
+    }
+  }
+
   function bindResults() {
     const results = $("#results");
     if (!results) return;

@@ -35,14 +35,15 @@
   previous version is kept next to it as <code>config.yml.bak-…</code>). They apply straight away; no restart is
   needed unless a setting says so.</p>
 
-<nav class="settings-nav" aria-label="Settings sections">
-  <a href="#libraries">Libraries</a><a href="#folders">Media folders</a>
-  {% for s in sections %}<a href="#{{ s.key }}">{{ s.title.split(" ")[0] }}</a>{% endfor %}
+<nav class="tabs" role="tablist" aria-label="Settings">
+  {% for key, label in tabs %}<a href="/settings?tab={{ key }}" role="tab" id="tab-{{ key }}" data-tab="{{ key }}"
+     aria-controls="panel-{{ key }}" aria-selected="{{ 'true' if key == active_tab else 'false' }}"
+     tabindex="{{ 0 if key == active_tab else -1 }}">{{ label }}</a>{% endfor %}
 </nav>
 
 {# ------------------------------------------------------------------ libraries #}
-<section class="card settings-section" id="libraries">
-  <h2>Libraries</h2>
+<section class="card settings-section" id="libraries" data-tab-panel="{{ tab_of["libraries"] }}" role="tabpanel" aria-labelledby="tab-{{ tab_of["libraries"] }}" {% if tab_of["libraries"] != active_tab %}hidden{% endif %}>
+  <h2 class="visually-hidden">Libraries</h2>
   {{ saved_note("libraries") }}{{ section_error("libraries") }}{{ locked_note("libraries") }}
   {% set lib_locked = locked.get("libraries") %}
 
@@ -127,8 +128,8 @@
 </section>
 
 {# ------------------------------------------------------------------ media folders #}
-<section class="card settings-section" id="folders">
-  <h2>Media folders</h2>
+<section class="card settings-section" id="folders" data-tab-panel="{{ tab_of["folders"] }}" role="tabpanel" aria-labelledby="tab-{{ tab_of["folders"] }}" {% if tab_of["folders"] != active_tab %}hidden{% endif %}>
+  <h2 class="visually-hidden">Media folders</h2>
   {{ saved_note("folders") }}{{ section_error("folders") }}
   <form method="post" action="/settings/folders" class="settings-form">
     <label>Folders that hold your libraries
@@ -180,8 +181,9 @@
 
 {# ------------------------------------------------------------------ generic sections #}
 {% for s in sections %}
-<section class="card settings-section" id="{{ s.key }}">
-  <h2>{{ s.title }}</h2>
+<section class="card settings-section" id="{{ s.key }}" data-tab-panel="{{ tab_of[s.key] }}" role="tabpanel" aria-labelledby="tab-{{ tab_of[s.key] }}" {% if tab_of[s.key] != active_tab %}hidden{% endif %}>
+  {% set single = tab_of.values() | select("equalto", tab_of[s.key]) | list | length == 1 %}
+  <h2 {% if single %}class="visually-hidden"{% endif %}>{{ s.title }}</h2>
   <p class="help">{{ s.intro }}</p>
   {{ saved_note(s.key) }}{{ section_error(s.key) }}
   <form method="post" action="/settings/section/{{ s.key }}" class="settings-form">
@@ -210,10 +212,10 @@
         <input id="f-{{ f.key }}" type="text" name="{{ f.key }}" value="{{ v }}" placeholder="{{ f.placeholder }}" {% if lk %}disabled{% endif %} spellcheck="false">
         {% endif %}
         {% if f.kind == "cron" %}
-        <p class="small muted">{% if status.schedule.next_run %}Next scheduled scan: {{ status.schedule.next_run.replace("T", " ") }}{% elif status.schedule.error %}<span class="error">{{ status.schedule.error }}</span>{% else %}No scheduled scans.{% endif %}</p>
         {% endif %}
       {% endif %}
       {% if f.help %}<p class="help">{{ f.help }}</p>{% endif %}
+      {% if f.kind == "cron" %}<p class="next-run">{% if status.schedule.next_run %}Next scheduled scan: <strong>{{ status.schedule.next_run.replace("T", " ") }}</strong>{% elif status.schedule.error %}<span class="error">{{ status.schedule.error }}</span>{% else %}No scheduled scans.{% endif %}</p>{% endif %}
       {% if lk %}<p class="locked small">🔒 Set by <code>{{ lk }}</code>; change it in the container's settings.</p>{% endif %}
     </div>
     {% endfor %}
@@ -222,7 +224,7 @@
 </section>
 {% endfor %}
 
-<section class="card settings-section" id="about">
+<section class="card settings-section" id="about" data-tab-panel="{{ tab_of["about"] }}" role="tabpanel" aria-labelledby="tab-{{ tab_of["about"] }}" {% if tab_of["about"] != active_tab %}hidden{% endif %}>
   <h2>Files</h2>
   <dl class="facts">
     <dt>Config file</dt><dd><code>{{ config_path }}</code></dd>
