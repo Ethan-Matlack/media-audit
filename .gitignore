@@ -18,3 +18,4 @@ docker/media/
 docker/config/*
 !docker/config/config.yml
 .env
+config.yaml
