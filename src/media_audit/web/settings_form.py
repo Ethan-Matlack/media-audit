@@ -241,8 +241,8 @@ SECTIONS: tuple[Section, ...] = (
     Section(
         "web",
         "Web UI",
-        "Takes effect after the container restarts. In Docker, change the "
-        "published port in the container settings instead.",
+        "Where the web UI listens. In Docker, change the published port in the "
+        "container settings instead.",
         (
             Field("web.port", "Port", "int", "", 1, 65535, 1, restart=True),
             Field(

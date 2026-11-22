@@ -199,7 +199,7 @@
     if (focus) tab.focus();
     const url = new URL(window.location.href);
     url.searchParams.set("tab", key);
-    for (const k of ["saved", "msg", "backup", "rescan"]) url.searchParams.delete(k);
+    for (const k of ["saved", "msg", "backup", "rescan", "restart"]) url.searchParams.delete(k);
     url.hash = "";
     history.replaceState(null, "", url);
     return true;

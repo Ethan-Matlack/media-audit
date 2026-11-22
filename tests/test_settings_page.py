@@ -140,7 +140,16 @@ def test_scanning_and_other_sections(setup: dict[str, Any]) -> None:
                                                    "linking.by_name_year": "1"})  # fmt: skip
     assert _config(setup).linking.by_id is False
     r = client.post("/settings/section/web", data={"web.port": "9000", "web.host": "0.0.0.0"})
-    assert "Restart the container" in r.text and _config(setup).web.port == 9000
+    assert _config(setup).web.port == 9000
+    saved = r.text.split('<div class="notice" role="status">')[1].split("</div>")[0]
+    assert "↻</span> Restart required for this change to take effect" in saved
+    assert 'class="badge quiet">restart' not in r.text
+    # The same marker sits under each setting that needs a restart, and nowhere else.
+    web = r.text.split('id="web"')[1].split("</section>")[0]
+    assert web.count("Restart required for this change to take effect") == 3  # 2 fields + saved
+    r = client.post("/settings/section/linking", data={"linking.by_id": "1"})
+    saved = r.text.split('<div class="notice" role="status">')[1].split("</div>")[0]
+    assert "Restart required" not in saved
 
 
 def test_issue_checks(setup: dict[str, Any]) -> None:
@@ -336,3 +345,26 @@ def test_tabs(setup: dict[str, Any]) -> None:
         "linking", "languages", "cleanup", "web", "about"}  # fmt: skip
     r = client.post("/settings/section/issues", data={"flags.min_peers": "1"})
     assert r.status_code == 400 and _visible(r.text) == {"issues"}
+
+
+def test_file_locations(setup: dict[str, Any], tmp_path: Path, monkeypatch: Any) -> None:
+    from media_audit.config import Config
+    from media_audit.web.settings_page import _file_locations
+
+    page = setup["client"].get("/settings?tab=general").text
+    about = page.split('id="about"')[1].split("</section>")[0]
+    assert (
+        f"<code>{setup['cfg']}</code>" in about and "Full paths as media-audit sees them" in about
+    )
+    # Relative paths are shown in full; with the app-data folder's server path known, the
+    # server path is shown too.
+    monkeypatch.chdir(tmp_path)
+    cfg = Config(database=Path("db/m.db"))
+    rows = _file_locations(Path("config.yml"), cfg)
+    assert [r["path"] for r in rows] == [str(tmp_path / "config.yml"), str(tmp_path / "db/m.db")]
+    assert all(r["host"] is None for r in rows)
+    cfg = Config(database=Path("/config/media-audit.db"),
+                 cleanup={"host_config_path": "/mnt/user/appdata/media-audit"})  # fmt: skip
+    rows = _file_locations(Path("/config/config.yml"), cfg)
+    appdata = "/mnt/user/appdata/media-audit"
+    assert [r["host"] for r in rows] == [f"{appdata}/config.yml", f"{appdata}/media-audit.db"]

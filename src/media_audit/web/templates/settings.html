@@ -16,12 +16,15 @@
 </select>
 {% endmacro %}
 
+{% macro restart_note() %}<p class="restart-note"><span class="restart-icon" aria-hidden="true">↻</span> Restart required for this change to take effect</p>{% endmacro %}
+
 {% macro locked_note(key) %}{% if locked.get(key) %}<p class="locked small">🔒 Set by the environment variable <code>{{ locked[key] }}</code> (e.g. in the container's settings), so it can't be changed here.</p>{% endif %}{% endmacro %}
 
 {% macro section_error(key) %}{% if error and error_section == key %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}{% endmacro %}
 
 {% macro saved_note(key) %}{% if saved == key and message %}
 <div class="notice" role="status">{{ message }}{% if backup %} <span class="muted small">The previous config is kept as <code>{{ backup }}</code>.</span>{% endif %}
+  {% if restart %}{{ restart_note() }}{% endif %}
   {% if rescan %}<form method="post" action="/scans/run" class="inline"><button type="submit" class="button primary small-button">Scan now</button></form>{% endif %}
 </div>{% endif %}{% endmacro %}
 
@@ -203,7 +206,7 @@
         </fieldset>
         {% endfor %}
       {% else %}
-        <label for="f-{{ f.key }}" class="field-label">{{ f.label }}{% if f.restart %} <span class="badge quiet">restart</span>{% endif %}</label>
+        <label for="f-{{ f.key }}" class="field-label">{{ f.label }}</label>
         {% if f.kind == "lines" %}
         <textarea id="f-{{ f.key }}" name="{{ f.key }}" rows="6" placeholder="{{ f.placeholder }}" {% if lk %}disabled{% endif %}>{{ v }}</textarea>
         {% elif f.kind in ("int", "float") %}
@@ -215,6 +218,7 @@
         {% endif %}
       {% endif %}
       {% if f.help %}<p class="help">{{ f.help }}</p>{% endif %}
+      {% if f.restart %}{{ restart_note() }}{% endif %}
       {% if f.kind == "cron" %}<p class="next-run">{% if status.schedule.next_run %}Next scheduled scan: <strong>{{ status.schedule.next_run.replace("T", " ") }}</strong>{% elif status.schedule.error %}<span class="error">{{ status.schedule.error }}</span>{% else %}No scheduled scans.{% endif %}</p>{% endif %}
       {% if lk %}<p class="locked small">🔒 Set by <code>{{ lk }}</code>; change it in the container's settings.</p>{% endif %}
     </div>
@@ -226,9 +230,16 @@
 
 <section class="card settings-section" id="about" data-tab-panel="{{ tab_of["about"] }}" role="tabpanel" aria-labelledby="tab-{{ tab_of["about"] }}" {% if tab_of["about"] != active_tab %}hidden{% endif %}>
   <h2>Files</h2>
+  <p class="help">Full paths as media-audit sees them{% if in_docker %}, inside the container{% endif %}.
+    {% if files | selectattr("host") | list %}The server path comes from <em>This app's data folder on the server</em> (Cleanup scripts).{% elif in_docker %}Set <em>This app's data folder on the server</em> (Cleanup scripts) to also see where they are on the server.{% endif %}</p>
   <dl class="facts">
-    <dt>Config file</dt><dd><code>{{ config_path }}</code></dd>
-    <dt>Database</dt><dd><code>{{ cfg.database }}</code> <span class="muted small">(change it in the config file; it needs a restart)</span></dd>
+    {% for f in files %}
+    <dt>{{ f.label }}</dt>
+    <dd><code>{{ f.path }}</code>
+      {% if f.host %}<div class="small muted">On the server: <code>{{ f.host }}</code></div>{% endif %}
+      {% if f.label == "Database" %}<div class="small muted">To move it, change <code>database</code> in the config file.</div>{{ restart_note() }}{% endif %}
+    </dd>
+    {% endfor %}
   </dl>
 </section>
 {% endif %}
