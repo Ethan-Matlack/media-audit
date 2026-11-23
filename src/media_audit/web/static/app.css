@@ -457,3 +457,10 @@ table.mappings tr.locked-row input { color: var(--text-2); }
   .toast.leaving { transition: none; }
 }
 @media (max-width: 640px) { .toasts { left: 1rem; right: 1rem; max-width: none; } }
+.level { font-weight: 700; white-space: nowrap; }
+.level-low { color: var(--warn); }
+.level-high { color: var(--accent-ink); }
+fieldset.shared-titles { border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.75rem 0.6rem; margin: 0; }
+fieldset.shared-titles legend { font-size: 0.85rem; color: var(--text-2); padding: 0 0.3rem; }
+fieldset.shared-titles label.check { display: inline-flex; margin-right: 1rem; }
+fieldset.shared-titles .help { margin-top: 0.3rem; }

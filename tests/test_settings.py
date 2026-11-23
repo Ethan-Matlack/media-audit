@@ -218,3 +218,30 @@ def test_prune_keeps_the_newest(tmp_path: Path) -> None:
     removed = prune(tmp_path, "db.bak-remap-*", 2)
     assert sorted(removed) == files[:2] and sorted(tmp_path.iterdir()) == files[2:]
     assert prune(tmp_path / "missing", "*", 1) == []
+
+
+def test_shared_titles_follow_renames_and_removals(store: ConfigStore, tmp_path: Path) -> None:
+    store.save(store.add_library("anime", str(tmp_path / "media/anime"), "tv"))
+    store.save(store.set_value("linking.shared_titles", [["movies", "tv", "anime"]]))
+    store.save(store.update_library("tv", new_name="shows"))
+    assert store.config().linking.shared_titles == [["movies", "shows", "anime"]]
+    store.save(store.remove_library("anime"))
+    assert store.config().linking.shared_titles == [["movies", "shows"]]
+    store.save(store.remove_library("shows"))  # a group of one is no group
+    assert store.config().linking.shared_titles == []
+    assert "shared_titles:" not in store.path.read_text()
+    assert "linking:" not in store.path.read_text()  # no empty section left behind
+
+
+def test_set_shared() -> None:
+    from media_audit.web.settings_page import set_shared, shared_with
+
+    groups = [["hd", "4k", "remux"], ["tv", "tv-4k"]]
+    assert shared_with(groups, "hd") == {"4k", "remux"}
+    # hd now only shares with 4k: the others' group survives without it.
+    assert set_shared(groups, "hd", {"4k"}) == [["4k", "remux"], ["tv", "tv-4k"], ["hd", "4k"]]
+    assert set_shared(groups, "hd", set()) == [["4k", "remux"], ["tv", "tv-4k"]]
+    # Renamed at the same time: the old name goes everywhere.
+    assert set_shared(groups, "films", {"remux"}, old_name="hd") == [
+        ["4k", "remux"], ["tv", "tv-4k"], ["films", "remux"]]  # fmt: skip
+    assert set_shared([["hd", "4k"]], "hd", {"4k"}) == [["hd", "4k"]]  # unchanged

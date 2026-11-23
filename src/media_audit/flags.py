@@ -201,7 +201,9 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
         if len({m["library_id"] for m in members}) < 2:
             continue
         for t in members:
-            others = [m for m in members if m["library_id"] != t["library_id"]]
+            # Libraries that share titles on purpose (e.g. an HD and a 4K library) don't count.
+            others = [m for m in members if m["library_id"] != t["library_id"]
+                      and not config.linking.shares(t["library"], m["library"])]  # fmt: skip
             if not others:
                 continue
             where = ", ".join(sorted({f"{o['library']}" for o in others}))
@@ -225,11 +227,10 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
         rates = [e for e in timed if (e["gb_per_hour"] or 0) > 0]
         med_rate = median([e["gb_per_hour"] for e in rates]) if len(rates) >= fc.min_peers else 0
         for e in timed:
-            label = _episode_label(e)
             if e["duration_s"] < fc.short_runtime * med_len:
                 out.add(e["library"], Flag(
                     "short_runtime", f"short_runtime:{e['id']}", _fp(e), e["library_id"],
-                    f"{label}{_minutes(e['duration_s'])} long; the season's episodes run "
+                    f"{_minutes(e['duration_s'])} long; the season's episodes run "
                     f"{_minutes(med_len)} (median)", e["title_id"], e["id"],
                     e["season_number"]))  # fmt: skip
             rate = e["gb_per_hour"] or 0
@@ -238,8 +239,8 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
                 word = "low" if rate < med_rate else "high"
                 out.add(e["library"], Flag(
                     "bitrate_outlier", f"bitrate_outlier:{e['id']}", _fp(e), e["library_id"],
-                    f"{label}{rate:.2f} GB/h ({word}); the rest of the season is around "
-                    f"{med_rate:.2f} GB/h", e["title_id"], e["id"], e["season_number"],
+                    f"{rate:.2f} GB/h is {word.upper()}; Season avg is ~{med_rate:.2f} GB/h",
+                    e["title_id"], e["id"], e["season_number"],
                     {"direction": word}))  # fmt: skip
 
     by_res: dict[str, list[sqlite3.Row]] = defaultdict(list)
@@ -254,8 +255,8 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
             if m["gb_per_hour"] < fc.movie_bitrate_low * med_rate:
                 out.add(m["library"], Flag(
                     "bitrate_outlier", f"bitrate_outlier:{m['id']}", _fp(m), m["library_id"],
-                    f"{m['gb_per_hour']:.2f} GB/h (low); {res} movies are around "
-                    f"{med_rate:.2f} GB/h", m["title_id"], m["id"], None,
+                    f"{m['gb_per_hour']:.2f} GB/h is LOW; {res} movie avg is ~{med_rate:.2f} GB/h",
+                    m["title_id"], m["id"], None,
                     {"direction": "low"}))  # fmt: skip
 
     for f in analyzed:
@@ -265,7 +266,7 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
         what = "an upscale or mislabelled" if kind == "upscale" else "better than labelled"
         out.add(f["library"], Flag(
             "resolution_mismatch", f"resolution_mismatch:{f['id']}", _fp(f), f["library_id"],
-            f"{_episode_label(f)}Named {f['resolution_tag']} but the video is "
+            f"Named {f['resolution_tag']} but the video is "
             f"{f['width']}×{f['height']} ({f['resolution_class']}): {what}",
             f["title_id"], f["id"], f["season_number"], {"direction": kind}))  # fmt: skip
 
@@ -316,7 +317,7 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
                  else "the show's other episodes are in season folders")  # fmt: skip
         out.add(f["library"], Flag(
             "episode_outside_season", f"episode_outside_season:{f['id']}", _fp(f),
-            f["library_id"], f"{_episode_label(f)}In the show folder, not a season folder; "
+            f["library_id"], f"In the show folder, not a season folder; "
             f"{where}", f["title_id"], f["id"], n))  # fmt: skip
     for t in titles:
         if not (t["tmdb_id"] or t["imdb_id"] or t["tvdb_id"]):
@@ -341,7 +342,7 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
         if f["codec"] in LEGACY_CODECS:
             out.add(f["library"], Flag(
                 "legacy_codec", f"legacy_codec:{f['id']}", _fp(f), f["library_id"],
-                f"{_episode_label(f)}{LEGACY_CODECS[f['codec']]} in "
+                f"{LEGACY_CODECS[f['codec']]} in "
                 f"{f['container'] or f['ext'].upper()}, {_size(f['size_bytes'])}",
                 f["title_id"], f["id"], f["season_number"]))  # fmt: skip
         langs = set((f["audio_languages"] or "").split(",")) - {""}
@@ -349,7 +350,7 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
             out.add(f["library"], Flag(
                 "no_preferred_audio", f"no_preferred_audio:{f['id']}", _fp(f),
                 f["library_id"],
-                f"{_episode_label(f)}Audio: {', '.join(sorted(langs))} "
+                f"Audio: {', '.join(sorted(langs))} "
                 f"(preferred: {', '.join(sorted(preferred))})",
                 f["title_id"], f["id"], f["season_number"]))  # fmt: skip
     return out.flags
@@ -532,16 +533,10 @@ def _in_extras_folder(rel_path: str) -> bool:
     return any(d in EXTRAS_FOLDERS or d in {"commentaries", "commentary"} for d in folders)
 
 
-def _episode_label(f: sqlite3.Row) -> str:
-    s, e = f["season_number"], f["episode_number"]
-    if f["kind"] == "show" and s is not None and e is not None:
-        return f"S{s:02d}E{e:02d}: "
-    return ""
-
-
 def _settings_hash(config: Config) -> str:
     settings = {"flags": config.flags.model_dump(),
-                "preferred_audio": config.languages.preferred_audio}  # fmt: skip
+                "preferred_audio": config.languages.preferred_audio,
+                "shared_titles": config.linking.shared_titles}  # fmt: skip
     return hashlib.sha1(json.dumps(settings, sort_keys=True).encode()).hexdigest()[:12]
 
 

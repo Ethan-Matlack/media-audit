@@ -72,7 +72,7 @@
         <td class="nowrap">{{ r.library }}</td>
         <td class="path where">{{ issue_where(r) }}</td>
         <td>
-          {{ r.message }}
+          {{ r | issue_text }}
           {% if r.data and r.data.titles %}
           <div class="small">{% for t in r.data.titles %}<a href="/titles/{{ t.id }}">{{ t.library }}: {{ t.name }}{% if t.year %} ({{ t.year }}){% endif %}</a>{{ ", " if not loop.last }}{% endfor %}</div>
           {% endif %}

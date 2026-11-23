@@ -400,7 +400,25 @@ class ConfigStore:
 
 
 def _rename_overrides(doc: CommentedMap, old: str, new: str | None) -> None:
-    """flags.disabled_by_library is keyed by library name: follow a rename or removal."""
+    """Settings that name libraries follow a rename or removal: the per-library checks
+    (flags.disabled_by_library) and libraries that share titles (linking.shared_titles)."""
+    linking = doc.get("linking")
+    groups = linking.get("shared_titles") if isinstance(linking, CommentedMap) else None
+    if isinstance(groups, list):
+        for i in range(len(groups) - 1, -1, -1):
+            group = groups[i]
+            if not isinstance(group, list) or old not in group:
+                continue
+            if new is None:
+                group.remove(old)
+            else:
+                group[group.index(old)] = new
+            if len(group) < 2:
+                del groups[i]
+        if not groups:
+            del linking["shared_titles"]
+            if not linking:
+                del doc["linking"]
     flags = doc.get("flags")
     per_lib = flags.get("disabled_by_library") if isinstance(flags, CommentedMap) else None
     if not isinstance(per_lib, dict) or old not in per_lib:

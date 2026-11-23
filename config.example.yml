@@ -50,6 +50,9 @@ web:
 linking:
   by_id: true          # same {tmdb-..}/{imdb-..}/{tvdb-..}
   by_name_year: true   # same normalized title + year
+  # Libraries that hold the same titles on purpose (not reported as duplicates):
+  # shared_titles:
+  #   - [movies-hd, movies-4k]
 
 languages:
   preferred_audio: [en]

@@ -15,7 +15,7 @@ Severity = Literal["error", "warning", "info"]
 SEVERITY_ORDER: dict[str, int] = {"error": 0, "warning": 1, "info": 2}
 
 # Bump when checks change so a running container recomputes issues on start.
-FLAGS_VERSION = 6
+FLAGS_VERSION = 8
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,9 @@ _CHECKS = [
           "Several main video files in one movie folder: different qualities or editions. "
           "Often deliberate; ignore the ones you mean to keep."),
     Check("cross_library", "duplicates", "info", "Same title in more than one library",
-          "Linked by ID or by name and year. Expected for e.g. a separate 4K library."),
+          "Linked by ID or by name and year. Libraries that hold the same titles on purpose "
+          "(e.g. an HD and a 4K library) can be marked as sharing titles in Settings → "
+          "Libraries, and aren't reported."),
     Check("orphan_subtitle", "duplicates", "warning", "Subtitle files with no matching video",
           "Usually left behind when the video was renamed or replaced, so the player no "
           "longer picks them up."),

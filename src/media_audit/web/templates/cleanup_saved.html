@@ -10,7 +10,8 @@
   {% set run = host_path or ("/mnt/user/appdata/media-audit/cleanup/" ~ name) %}
   {% if not host_path %}
   <p class="small muted">The path below assumes your appdata folder is <code>/mnt/user/appdata/media-audit</code>.
-    Set <code>cleanup.host_config_path</code> so this page shows the real one.</p>
+    Set <em>This app's data folder on the server</em> in <a href="/settings?tab=general#cleanup">Settings → General</a>
+    so this page shows the real one.</p>
   {% endif %}
   <h2>1. Dry run (changes nothing)</h2>
   <p class="small">In the server's terminal (on Unraid: the <strong>&gt;_</strong> icon at the top right):</p>

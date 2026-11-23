@@ -228,6 +228,23 @@ class LinkingConfig(_Model):
 
     by_id: bool = True
     by_name_year: bool = True
+    # Groups of libraries meant to hold the same titles (e.g. movies-hd and movies-4k):
+    # a title in more than one of them isn't reported as "in more than one library".
+    shared_titles: list[list[str]] = Field(default_factory=list)
+
+    @field_validator("shared_titles")
+    @classmethod
+    def _groups(cls, v: list[list[str]]) -> list[list[str]]:
+        out = []
+        for group in v:
+            names = list(dict.fromkeys(str(n).strip() for n in group if str(n).strip()))
+            if len(names) >= 2:
+                out.append(names)
+        return out
+
+    def shares(self, a: str, b: str) -> bool:
+        """Whether libraries ``a`` and ``b`` hold the same titles on purpose."""
+        return a != b and any(a in g and b in g for g in self.shared_titles)
 
 
 class LanguagesConfig(_Model):
