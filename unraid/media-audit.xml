@@ -21,8 +21,16 @@
   <Category>MediaApp:Video Tools:</Category>
   <WebUI>http://[IP]:[PORT:8484]/</WebUI>
   <Changes>
-### 0.8.1
+### 0.8.3
 - The Scan schedule, Scan workers and Host appdata path container variables are gone: set them in the web UI under Settings (Scanning, and General → Cleanup scripts). Remove them from an existing container (Edit, then remove the three variables) so they stop overriding the settings.
+- Libraries that hold the same titles on purpose (e.g. movies-hd and movies-4k) can be marked as sharing titles in Settings → Libraries, so those copies aren't reported as duplicates.
+- Bitrate issues read "0.31 GB/h is LOW; Season avg is ~1.08 GB/h", with LOW and HIGH marked; issue messages no longer repeat the episode code.
+- Rewritten README.
+
+### 0.8.1
+- Settings page split into tabs, with save messages as pop-ups, a plain cron field for the schedule, and a clear marker on settings that need a restart.
+- Server path mappings explained, with the container's own mapping shown as a locked row and an Add mapping button.
+- Only the newest 5 config backups and 2 database backups of each kind are kept.
 
 ### 0.8.0
 - Settings page: set up everything from the web UI (libraries with a folder browser, scanning, schedule, linking, languages, Issues checks, media folders and server paths) without editing config.yml.
