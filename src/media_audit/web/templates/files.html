@@ -50,12 +50,89 @@
 </div>
 {{ pager(groups, params) }}
 {% endmacro %}
+
+{% macro chart_select(name, label, options, current, none_option=none) %}
+<label>{{ label }}
+  <select name="{{ name }}" form="file-filters">
+    {% if none_option %}<option value="" {% if not current %}selected{% endif %}>{{ none_option }}</option>{% endif %}
+    {% for o in options %}<option value="{{ o.key }}" {% if current and current.key == o.key %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
+  </select>
+</label>
+{% endmacro %}
+
+{% macro chart_view(c, params) %}
+{% set unit = c.measure.unit %}
+<div class="chart-controls filters">
+  {{ chart_select("dim", "Group by", chart_dims, c.dim) }}
+  {{ chart_select("measure", "Measure", chart_measures, c.measure) }}
+  {{ chart_select("split", "Split by", chart_dims | rejectattr("key", "equalto", c.dim.key) | list, c.split, "(none)") }}
+  <label class="narrow">At least <input type="number" name="min" min="1" step="1" value="{{ c.min }}" form="file-filters"></label>
+  <label>Sort
+    <select name="csort" form="file-filters">
+      <option value="value" {% if c.order == "value" %}selected{% endif %}>Largest first</option>
+      <option value="name" {% if c.order == "name" %}selected{% endif %}>By name</option>
+    </select>
+  </label>
+  <label class="check"><input type="hidden" name="per" value="file" form="file-filters"><input type="checkbox" name="per" value="title" form="file-filters" {% if c.per_title %}checked{% endif %}> Count each title once</label>
+</div>
+<p class="help chart-note">
+  {{ c.measure.label }} by {{ c.dim.label | lower }}{% if c.split %}, split by {{ c.split.label | lower }}{% endif %}.
+  {% if c.measure.key == "share" and c.split %}Each bar is 100% of its group.{% endif %}
+  {% if not c.measure.additive %}Groups with fewer than {{ c.min }} {{ c.unit_word }}s are left out{% if c.hidden_small %} ({{ c.hidden_small }} here){% endif %}.{% elif c.hidden_small %}{{ c.hidden_small }} group{{ "s" if c.hidden_small != 1 }} with fewer than {{ c.min }} {{ c.unit_word }}s left out.{% endif %}
+  {% if c.dim.is_track or (c.split and c.split.is_track) %}A file with several {{ (c.dim if c.dim.is_track else c.split).label | lower }}s counts in each.{% endif %}
+</p>
+{% if c.legend %}
+<ul class="chart-legend" aria-label="{{ c.split.label }}">
+  {% for l in c.legend %}<li><span class="swatch series-{{ l.slot }}" aria-hidden="true"></span>{{ l.label }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% if not c.groups %}
+<p class="muted">Nothing to chart with these filters{% if c.hidden_small %}: every group has fewer than {{ c.min }} {{ c.unit_word }}s{% endif %}.</p>
+{% else %}
+<ol class="chart">
+  {% for g in c.groups %}
+  <li class="chart-row">
+    <span class="chart-label">{% if g.link %}<a href="{{ g.link }}" title="Show these files">{{ g.label }}</a>{% else %}{{ g.label }}{% endif %}</span>
+    {% if c.split and c.measure.additive %}
+    <span class="chart-track"><span class="chart-stack" style="width: {{ 100 * g.amount / c.max }}%">
+      {% for s in g.segments %}{% set w = 100 * s.amount / (g.amount or 1) %}<a class="chart-seg series-{{ s.slot }}" style="width: {{ w }}%" {% if s.link %}href="{{ s.link }}"{% endif %} title="{{ s.label }}: {{ s.amount | measure(unit) }} · {{ s.n | num }} {{ c.unit_word }}{{ 's' if s.n != 1 }}"><span class="visually-hidden">{{ s.label }}: {{ s.amount | measure(unit) }}</span></a>{% endfor %}
+    </span></span>
+    {% else %}
+    <span class="chart-track"><span class="chart-bar" style="width: {{ 100 * g.amount / c.max }}%"></span></span>
+    {% endif %}
+    <span class="chart-value">{{ g.amount | measure(unit) if not (c.split and c.measure.key == "share") else "" }}<span class="chart-n">{{ g.n | num }}</span></span>
+    {% if c.split and c.measure.key == "share" %}
+    <span class="chart-parts">{% for s in g.segments %}<span><span class="swatch series-{{ s.slot }}" aria-hidden="true"></span>{{ s.label }} {{ s.amount | measure(unit) }} ({{ s.n | num }})</span>{% endfor %}</span>
+    {% endif %}
+  </li>
+  {% if c.split and not c.measure.additive %}
+  {% for s in g.segments %}
+  <li class="chart-row sub">
+    <span class="chart-label">{% if s.link %}<a href="{{ s.link }}">{{ s.label }}</a>{% else %}{{ s.label }}{% endif %}</span>
+    <span class="chart-track"><span class="chart-bar series-{{ s.slot }}" style="width: {{ 100 * s.amount / c.max }}%"></span></span>
+    <span class="chart-value">{{ s.amount | measure(unit) }}<span class="chart-n">{{ s.n | num }}</span></span>
+  </li>
+  {% endfor %}
+  {% endif %}
+  {% endfor %}
+  {% if c.other %}
+  <li class="chart-row other">
+    <span class="chart-label">{{ c.other.label }}</span>
+    <span class="chart-track"><span class="chart-bar" style="width: {{ 100 * c.other.amount / c.max }}%"></span></span>
+    <span class="chart-value">{{ c.other.amount | measure(unit) }}<span class="chart-n">{{ c.other.n | num }}</span></span>
+  </li>
+  {% endif %}
+</ol>
+<p class="small muted chart-foot">The grey number is how many {{ c.unit_word }}s each bar is based on.
+  {% if c.more %}<a href="{{ qs(params, top='all') }}">Show all {{ c.groups | length + c.more }} groups</a>{% endif %}</p>
+{% endif %}
+{% endmacro %}
 {% block content %}
 <div class="page-head">
   <h1>Files</h1>
   <a class="button" href="/files.csv{{ qs(params, page=None) }}" download>Export CSV</a>
 </div>
-<form method="get" class="filters" data-autosubmit>
+<form method="get" class="filters" data-autosubmit id="file-filters">
   <label class="grow">Folder or file name
     <span class="path-filter">
       <select name="q_not" aria-label="Path match">
@@ -78,7 +155,8 @@
   <label class="check"><input type="checkbox" name="remux" value="1" {% if params.remux == "1" %}checked{% endif %}> Remux</label>
   <label class="check"><input type="checkbox" name="errors" value="1" {% if params.errors == "1" %}checked{% endif %}> Unreadable</label>
   <div class="facets">
-    {% for f in facet_defs %}{{ facet(f, facets[f.key], params) }}{% endfor %}
+    {% for f in facet_defs if f.shown %}{{ facet(f, facets[f.key], params) }}{% endfor %}
+    {% for f in facet_defs if not f.shown %}{% for v in facets[f.key] %}<input type="hidden" name="{{ f.key }}" value="{{ v.value }}">{% endfor %}{% if params.get(f.key ~ "_not") == "1" %}<input type="hidden" name="{{ f.key }}_not" value="1">{% endif %}{% endfor %}
   </div>
   {% if params.folder %}<input type="hidden" name="folder" value="{{ params.folder }}">{% endif %}
   {% for key in ("by", "title", "season") %}{% if params.get(key) %}<input type="hidden" name="{{ key }}" value="{{ params.get(key) }}">{% endif %}{% endfor %}
@@ -93,18 +171,20 @@
   <p class="result-count"><strong>{{ groups.files | num }}</strong> file{{ "s" if groups.files != 1 }}
     in {{ groups.total | num }} {{ ("season" if groups.mode == "season" else "title") ~ ("s" if groups.total != 1 else "") }}{% if groups.mode == "season" %} and movies{% endif %}
     {%- if groups.mode == "season" %} ({{ groups.titles | num }} title{{ "s" if groups.titles != 1 }}){% endif %} · {{ groups.bytes | bytes }}</p>
+  {% elif chart %}
+  <p class="result-count"><strong>{{ chart.units | num }}</strong> {{ chart.unit_word }}{{ "s" if chart.units != 1 }}</p>
   {% else %}
   <p class="result-count"><strong>{{ page.total | num }}</strong> file{{ "s" if page.total != 1 }} · {{ page.total_bytes | bytes }}</p>
   {% endif %}
   <nav class="group-by" aria-label="Group by">
     <span class="muted small">Group by</span>
-    {% for mode, label in [(none, "Files"), ("title", "Titles"), ("season", "Seasons")] %}
-    <a href="{{ qs(params, by=mode, page=None, sort=None, dir=None) }}" {% if params.get("by") == mode or (mode is none and not groups) %}aria-current="true"{% endif %}>{{ label }}</a>
+    {% for mode, label in [(none, "Files"), ("title", "Titles"), ("season", "Seasons"), ("chart", "Chart")] %}
+    <a href="{{ qs(params, by=mode, page=None, sort=None, dir=None) }}" {% if params.get("by") == mode or (mode is none and not groups and not chart) %}aria-current="true"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
   {{ active_filters(facet_defs, facets, params, scope) }}
 </div>
-{% if groups %}{{ grouped_table(groups, params) }}{% else %}
+{% if chart %}{{ chart_view(chart, params) }}{% elif groups %}{{ grouped_table(groups, params) }}{% else %}
 <div class="table-wrap">
 <table class="data files">
   <thead><tr>

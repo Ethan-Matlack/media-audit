@@ -95,39 +95,39 @@
   </section>
 
   <section class="card">
-    <h2>Resolution</h2>
+    <h2 class="card-head">Resolution <a class="chart-link small" href="/files?by=chart&dim=resolution{{ lib_q }}">Chart →</a></h2>
     {{ bars(data.resolution, n, link="/files?" ~ lib_q[1:] ~ "&resolution=") }}
   </section>
   <section class="card">
-    <h2>Dynamic range</h2>
+    <h2 class="card-head">Dynamic range <a class="chart-link small" href="/files?by=chart&dim=dr{{ lib_q }}">Chart →</a></h2>
     {{ bars(data.dynamic_range, n, link="/files?" ~ lib_q[1:] ~ "&dr=") }}
   </section>
   <section class="card">
-    <h2>Video codec</h2>
+    <h2 class="card-head">Video codec <a class="chart-link small" href="/files?by=chart&dim=codec{{ lib_q }}">Chart →</a></h2>
     {{ bars(data.video_codec, n, link="/files?" ~ lib_q[1:] ~ "&codec=") }}
   </section>
   <section class="card">
-    <h2>Audio format <span class="muted small">files with at least one track</span></h2>
+    <h2 class="card-head">Audio format <span class="muted small">files with at least one track</span> <a class="chart-link small" href="/files?by=chart&dim=audio{{ lib_q }}">Chart →</a></h2>
     {{ bars(data.audio_format, n, link="/files?" ~ lib_q[1:] ~ "&audio=") }}
   </section>
   <section class="card">
-    <h2>Container</h2>
+    <h2 class="card-head">Container <a class="chart-link small" href="/files?by=chart&dim=container{{ lib_q }}">Chart →</a></h2>
     {{ bars(data.container, n, link="/files?" ~ lib_q[1:] ~ "&container=", limit=8) }}
   </section>
   <section class="card">
-    <h2>Source</h2>
+    <h2 class="card-head">Source <a class="chart-link small" href="/files?by=chart&dim=source{{ lib_q }}">Chart →</a></h2>
     {{ bars(data.source, n, link="/files?" ~ lib_q[1:] ~ "&source=", limit=8) }}
   </section>
   <section class="card">
-    <h2>Audio language</h2>
+    <h2 class="card-head">Audio language <a class="chart-link small" href="/files?by=chart&dim=alang{{ lib_q }}">Chart →</a></h2>
     {{ bars(data.audio_language, n, link="/files?" ~ lib_q[1:] ~ "&alang=") }}
   </section>
   <section class="card">
-    <h2>Subtitle language</h2>
+    <h2 class="card-head">Subtitle language <a class="chart-link small" href="/files?by=chart&dim=slang{{ lib_q }}">Chart →</a></h2>
     {% if data.subtitle_language %}{{ bars(data.subtitle_language, n) }}{% else %}<p class="muted">No subtitles found.</p>{% endif %}
   </section>
   <section class="card">
-    <h2>Release group <span class="muted small">top 12</span></h2>
+    <h2 class="card-head">Release group <span class="muted small">top 12</span> <a class="chart-link small" href="/files?by=chart&dim=group{{ lib_q }}">Chart →</a></h2>
     {{ bars(data.release_group, n, link="/files?" ~ lib_q[1:] ~ "&group=") }}
   </section>
   <section class="card span-2">

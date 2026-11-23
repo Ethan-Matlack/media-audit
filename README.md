@@ -221,6 +221,16 @@ how many files have them given your other filters.
 - **Group by Titles or Seasons** shows one row per show or season, with how many of its
   files match: "22 of 22" is the whole season pack, "1 of 14" one odd episode.
 - The URL can be shared or bookmarked, and **Export CSV** uses the same filters.
+- **Group by → Chart** turns the filtered files into a bar chart: group them by a
+  property (release group, resolution, dynamic range, DV profile, codec, audio or
+  subtitle language, source, year…), pick a measure (files, size, share, median or
+  average GB/h or bitrate, running time), and optionally **split by** a second property.
+  *Which release groups have the highest bitrates?* Group by release group, measure
+  median GB/h. *What share of my 4K is DV P7 vs P8?* Filter to 2160p, group by DV
+  profile, measure share. Groups smaller than a minimum (5 files for medians and
+  averages) are left out so one big file can't top a chart, each bar shows how many
+  files it's based on, and every bar links to its files. The Overview's breakdowns
+  each have a **Chart →** link.
 
 For anything else, the database is plain SQLite: open it with `sqlite3` or
 [Datasette](https://datasette.io). The `v_media` view has one row per video file, and
