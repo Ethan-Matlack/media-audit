@@ -201,7 +201,9 @@ def collect(conn: sqlite3.Connection, config: Config) -> list[Flag]:
         if len({m["library_id"] for m in members}) < 2:
             continue
         for t in members:
-            others = [m for m in members if m["library_id"] != t["library_id"]]
+            # Libraries that share titles on purpose (e.g. an HD and a 4K library) don't count.
+            others = [m for m in members if m["library_id"] != t["library_id"]
+                      and not config.linking.shares(t["library"], m["library"])]  # fmt: skip
             if not others:
                 continue
             where = ", ".join(sorted({f"{o['library']}" for o in others}))
@@ -533,7 +535,8 @@ def _in_extras_folder(rel_path: str) -> bool:
 
 def _settings_hash(config: Config) -> str:
     settings = {"flags": config.flags.model_dump(),
-                "preferred_audio": config.languages.preferred_audio}  # fmt: skip
+                "preferred_audio": config.languages.preferred_audio,
+                "shared_titles": config.linking.shared_titles}  # fmt: skip
     return hashlib.sha1(json.dumps(settings, sort_keys=True).encode()).hexdigest()[:12]
 
 

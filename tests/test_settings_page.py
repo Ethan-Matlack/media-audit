@@ -395,3 +395,22 @@ def test_saved_message_is_a_pop_up(setup: dict[str, Any]) -> None:
     # Errors stay inline, next to their section.
     r = client.post("/settings/section/scanning", data={"scan.workers": "99"})
     assert '<div class="toasts">' not in r.text and "between 1 and 32" in r.text
+
+
+def test_shared_titles_in_the_library_form(setup: dict[str, Any]) -> None:
+    client, media = setup["client"], setup["media"]
+    four_k = {"action": "add", "name": "movies-4k", "path": str(media / "anime"),
+              "type": "movies"}  # fmt: skip
+    client.post("/settings/libraries", data=four_k)
+    page = client.get("/settings").text
+    assert "Shares titles on purpose with" in page
+    form = [("action", "update"), ("name", "movies"), ("new_name", "movies"),
+            ("path", str(media / "movies")), ("type", "movies"), ("enabled", "1"),
+            ("shared_listed", "1"), ("shared", "movies-4k")]  # fmt: skip
+    r = _post(client, "/settings/libraries", form)
+    assert "Saved library movies" in r.text
+    assert _config(setup).linking.shared_titles == [["movies", "movies-4k"]]
+    assert "· with movies-4k" in r.text  # shown on both libraries
+    # Unticking clears it.
+    r = _post(client, "/settings/libraries", [p for p in form if p[0] != "shared"])
+    assert _config(setup).linking.shared_titles == []

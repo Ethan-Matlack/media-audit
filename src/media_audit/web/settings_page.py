@@ -32,7 +32,7 @@ from media_audit.web.service import ScanService
 
 log = logging.getLogger(__name__)
 
-LIST_KEYS = ("libraries", "media_folders", "path_mappings")
+LIST_KEYS = ("libraries", "media_folders", "path_mappings", "linking.shared_titles")
 
 
 def _norm(path: str) -> str:
@@ -112,6 +112,28 @@ def _file_locations(config_path: Path | None, cfg: Config) -> list[dict[str, str
     return out
 
 
+def shared_with(groups: list[list[str]], name: str) -> set[str]:
+    """The libraries ``name`` shares titles with."""
+    return {n for g in groups if name in g for n in g if n != name}
+
+
+def set_shared(groups: list[list[str]], name: str, partners: set[str],
+               old_name: str | None = None) -> list[list[str]]:  # fmt: skip
+    """``groups`` with ``name`` (formerly ``old_name``) sharing titles with exactly
+    ``partners``. Groups not involving it are kept as they are; one that did is kept
+    for its other members, and ``name`` gets one pair per partner."""
+    me = {name, old_name or name}
+    out: list[list[str]] = []
+    for g in groups:
+        rest = [n for n in g if n not in me]
+        if len(rest) >= 2 and rest not in out:
+            out.append(rest)
+    for p in sorted(partners - me):
+        if not any(name in g and p in g for g in out):
+            out.append([name, p])
+    return out
+
+
 def settings_routes(
     service: ScanService,
     db: Any,
@@ -153,6 +175,7 @@ def settings_routes(
         for lib in libraries:
             lib["configured"] = lib["name"] in configured
             lib["off"] = set(cfg.flags.disabled_by_library.get(lib["name"], []))
+            lib["shared"] = shared_with(cfg.linking.shared_titles, lib["name"])
         explicit = [(m.container, m.host) for m in cfg.path_mappings]
         legacy = cfg.cleanup.legacy_mapping()
         covered = [m.container for m in cfg.mappings()]
@@ -318,14 +341,21 @@ def settings_routes(
                            if k not in {name, new_name}}  # fmt: skip
                 if off:
                     per_lib[new_name] = off
+                extra: dict[str, Any] = {}
                 if per_lib != cfg.flags.disabled_by_library:
-                    # One change for both: apply the override on top of the library edit.
-                    change = _chain(st, change, lambda s: s.set_values(
-                        {"flags.disabled_by_library": per_lib or None}))  # fmt: skip
+                    extra["flags.disabled_by_library"] = per_lib or None
+                if "shared_listed" in form:  # the form has the list (not locked)
+                    partners = {n for n in form.get("shared", []) if n}
+                    groups = set_shared(cfg.linking.shared_titles, new_name, partners, name)
+                    if groups != cfg.linking.shared_titles:
+                        extra["linking.shared_titles"] = groups or None
+                if extra:
+                    # One change for all of it: on top of the library edit.
+                    change = _chain(st, change, lambda s: s.set_values(extra))
                 if not change.changed:
                     return done("libraries", "Nothing changed.", None)
                 backup = save(change)
-                after_save({"libraries", "flags"})
+                after_save({"libraries", "flags", "linking"})
                 moved = new_path is not None and new_path != _norm(
                     next((str(lib.path) for lib in cfg.libraries if lib.name == name), "")
                 )

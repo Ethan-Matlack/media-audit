@@ -47,7 +47,8 @@
   {% for l in libraries %}
   <details class="library" {% if open_library == l.name %}open{% endif %}>
     <summary>
-      <span class="lib-name"><strong>{{ l.name }}</strong> <span class="muted small">{{ "Movies" if l.type == "movies" else "TV shows" }}</span></span>
+      <span class="lib-name"><strong>{{ l.name }}</strong> <span class="muted small">{{ "Movies" if l.type == "movies" else "TV shows" }}</span>
+        {% if l.shared %}<span class="muted small" title="Shares titles on purpose with these libraries">· with {{ l.shared | sort | join(", ") }}</span>{% endif %}</span>
       <span class="lib-path"><code>{{ l.path }}</code>{% if l.host_path and l.host_path != l.path %}<span class="muted small"> · server: {{ l.host_path }}</span>{% endif %}</span>
       <span class="lib-status">
         {% if not l.configured %}<span class="muted">removed</span>
@@ -68,6 +69,17 @@
       </div>
       <label>Folder {{ folder_input("path", l.path, "path-" ~ loop.index, disabled=lib_locked) }}</label>
       <p class="help">Renaming keeps the library's history. If the folder was renamed on disk, the <a href="/scans#libraries">Scans page</a> can also find it for you.</p>
+      {% set others = libraries | selectattr("configured") | rejectattr("name", "equalto", l.name) | list %}
+      {% if others %}
+      <fieldset class="shared-titles">
+        <legend>Shares titles on purpose with</legend>
+        {% set shared_locked = lib_locked or locked.get("linking.shared_titles") %}
+        {% if not shared_locked %}<input type="hidden" name="shared_listed" value="1">{% endif %}
+        {% for o in others %}<label class="check"><input type="checkbox" name="shared" value="{{ o.name }}" {% if o.name in l.shared %}checked{% endif %} {% if shared_locked %}disabled{% endif %}> {{ o.name }}</label>{% endfor %}
+        <p class="help">For libraries that hold the same movies or shows on purpose, e.g. an HD and a 4K library. A title in
+          both isn't reported as "in more than one library"; one that's also somewhere else still is.</p>
+      </fieldset>
+      {% endif %}
       <details class="checks-off">
         <summary>Checks switched off for this library{% if l.off %} <span class="muted small">({{ l.off | length }})</span>{% endif %}</summary>
         <div class="check-grid">

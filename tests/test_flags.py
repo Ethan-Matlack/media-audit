@@ -427,3 +427,39 @@ def test_bitrate_level_is_marked() -> None:
     # Other checks' messages, and anything in a message, stay plain (escaped) text.
     assert str(issue_text({"code": "no_ids", "message": "Show <b> is LOW;"})) == \
         "Show &lt;b&gt; is LOW;"  # fmt: skip
+
+
+def test_libraries_sharing_titles_on_purpose(
+    make_tree: Callable[[str, dict[str, int | str]], Path], make_config: Callable[..., Config]
+) -> None:
+    movie = "Heat (1995) {tmdb-949}/Heat (1995) {tmdb-949}.mkv"
+    cfg = make_config(**{name: (make_tree(name, {movie: 1000}), "movies")
+                         for name in ("movies-hd", "movies-4k", "movies-other")})  # fmt: skip
+    conn = connect(cfg.database)
+    run_scan(conn, cfg, analyzer=FakeAnalyzer({}))
+
+    names = dict(conn.execute("SELECT id, name FROM libraries").fetchall())
+
+    def reported() -> dict[str, str]:
+        return {names[f.library_id]: f.message for f in collect(conn, cfg)
+                if f.code == "cross_library"}  # fmt: skip
+
+    assert reported() == {"movies-hd": "Also in movies-4k, movies-other",
+                          "movies-4k": "Also in movies-hd, movies-other",
+                          "movies-other": "Also in movies-4k, movies-hd"}  # fmt: skip
+    cfg.linking.shared_titles = [["movies-hd", "movies-4k"]]
+    # HD and 4K expect each other; the copy in a third library is still worth knowing.
+    assert reported() == {"movies-hd": "Also in movies-other",
+                          "movies-4k": "Also in movies-other",
+                          "movies-other": "Also in movies-4k, movies-hd"}  # fmt: skip
+    cfg.linking.shared_titles = [["movies-hd", "movies-4k", "movies-other"]]
+    assert reported() == {}
+
+
+def test_shared_titles_config() -> None:
+    from media_audit.config import LinkingConfig
+
+    link = LinkingConfig(shared_titles=[["a", "b", "a"], ["c"], [" d ", "e"]])
+    assert link.shared_titles == [["a", "b"], ["d", "e"]]  # duplicates, singles dropped
+    assert link.shares("a", "b") and link.shares("b", "a")
+    assert not link.shares("a", "a") and not link.shares("a", "d")

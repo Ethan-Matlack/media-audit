@@ -169,7 +169,7 @@ files are re-read). The **Issues** page groups the results by check, errors firs
 | `duplicate_episode` | warning | one episode stored as several files; shows the space freed by keeping the largest |
 | `orphan_subtitle` | warning | subtitle file with no video of the same name |
 | `multi_version_movie` | info | several versions of one movie (often deliberate) |
-| `cross_library` | info | the same title in two libraries |
+| `cross_library` | info | the same title in two libraries (libraries marked as sharing titles, e.g. HD and 4K, aren't reported) |
 | `short_runtime` | warning | episode much shorter than the rest of its season: often truncated or the wrong file |
 | `resolution_mismatch` | warning | filename says e.g. 1080p but the video isn't (upscales, mislabels) |
 | `bitrate_outlier` | info | GB/hour far from the rest of the season, or from movies at the same resolution |
