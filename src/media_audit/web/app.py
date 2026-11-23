@@ -19,6 +19,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from jinja2 import Environment, PackageLoader, select_autoescape
+from markupsafe import Markup, escape
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -160,6 +161,22 @@ def folder_url(library: str, folder: str, **extra: Any) -> str:
     return "/files?" + urlencode(params)
 
 
+_LEVELS = (("LOW", "low", "▼"), ("HIGH", "high", "▲"))
+
+
+def issue_text(issue: Mapping[str, Any]) -> Markup:
+    """An issue's message for a page, with "is LOW" / "is HIGH" marked by an icon and colour."""
+    text = escape(issue.get("message") or "")
+    if issue.get("code") == "bitrate_outlier":
+        for word, cls, icon in _LEVELS:
+            marked = (
+                f'<span class="level level-{cls}"><span aria-hidden="true">{icon}</span> '
+                f"{word}</span>"
+            )
+            text = Markup(text.replace(f" is {word};", Markup(f" is {marked};")))
+    return Markup(text)
+
+
 def _distinct_labels(values: list[float]) -> tuple[list[str], int]:
     """Byte labels with just enough decimals that neighbouring values differ."""
     for digits in range(1, 5):
@@ -244,6 +261,7 @@ def _env() -> Environment:
         episode=episode_code,
         audio_label=audio_label,
         shell_quote=shlex.quote,
+        issue_text=issue_text,
         parent_folder=parent_folder,
     )
     env.globals.update(qs=query_string, folder_url=folder_url, rel_folder=rel_folder,

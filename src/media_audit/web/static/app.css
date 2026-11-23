@@ -457,3 +457,6 @@ table.mappings tr.locked-row input { color: var(--text-2); }
   .toast.leaving { transition: none; }
 }
 @media (max-width: 640px) { .toasts { left: 1rem; right: 1rem; max-width: none; } }
+.level { font-weight: 700; white-space: nowrap; }
+.level-low { color: var(--warn); }
+.level-high { color: var(--accent-ink); }
