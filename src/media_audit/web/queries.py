@@ -398,6 +398,7 @@ class Facet:
     expr: str  # SQL for the value: a column, or a track column (alias t)
     track_table: str | None = None  # set for fields that live on tracks
     none_label: str = "(unknown)"
+    shown: bool = True  # False: no button in the filter bar (used by chart links)
 
     @property
     def is_track(self) -> bool:
@@ -417,6 +418,12 @@ FACETS: tuple[Facet, ...] = (
     Facet("container", "Container", "v.container"),
     Facet("source", "Source", "r.source", none_label="(none)"),
     Facet("group", "Release group", "r.release_group", none_label="(none)"),
+    # Not in the filter bar; set by the Chart view's links and shown as chips.
+    Facet("dv", "Dolby Vision profile", "'P' || v.dv_profile", none_label="(no DV)",
+          shown=False),
+    Facet("depth", "Bit depth", "v.bit_depth || '-bit'", shown=False),
+    Facet("edition", "Edition", "r.edition", none_label="(none)", shown=False),
+    Facet("year", "Year", "CAST(ti.year AS TEXT)", shown=False),
 )  # fmt: skip
 FACET_KEYS = {f.key: f for f in FACETS}
 _RES_ORDER = {"4320p": 0, "2160p": 1, "1080p": 2, "720p": 3, "SD": 4}
@@ -668,6 +675,11 @@ def facet_counts(conn: sqlite3.Connection, q: Mapping[str, str]) -> dict[str, li
     """
     out: dict[str, list[dict[str, Any]]] = {}
     for facet in FACETS:
+        if not facet.shown:  # only its chip is needed: the selected values, no counts
+            out[facet.key] = [{"value": v, "count": 0, "selected": True,
+                               "label": facet.none_label if v == NONE else v}
+                              for v in values(q, facet.key)]  # fmt: skip
+            continue
         where, params = _file_filters(q, skip=facet.key)
         if facet.is_track:
             sql = (

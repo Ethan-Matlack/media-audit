@@ -260,6 +260,23 @@
     history.replaceState(null, "", url);
   }
 
+  // Controls tied to a filter form from elsewhere on the page (form="…", e.g. the chart
+  // settings inside the results) update the results like the form's own fields.
+  document.addEventListener("change", (e) => {
+    const el = e.target;
+    const form = el.form;
+    if (!form || !form.matches("form[data-autosubmit]") || form.contains(el)) return;
+    // A new measure brings its own default minimum group size (1 for counts, 5 for
+    // medians and averages), rather than keeping the old one.
+    // Likewise a new grouping brings its own default order (by name for resolution,
+    // year and decade; largest first otherwise).
+    const reset = { measure: "min", dim: "csort" }[el.name];
+    if (reset) {
+      for (const m of document.querySelectorAll('[name="' + reset + '"][form="' + form.id + '"]')) m.value = "";
+    }
+    swapResults(formUrl(form), true);
+  });
+
   function bindResults() {
     const results = $("#results");
     if (!results) return;

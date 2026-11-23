@@ -39,7 +39,7 @@ from media_audit import __version__, cleanup, remap
 from media_audit.build import asset_tag, build_label, channel, display_version
 from media_audit.config import ConfigError
 from media_audit.db import connect, transaction, utcnow
-from media_audit.web import queries
+from media_audit.web import charts, queries
 from media_audit.web.data import ReadDB
 from media_audit.web.service import ScanService
 from media_audit.web.settings_page import settings_routes
@@ -177,6 +177,27 @@ def issue_text(issue: Mapping[str, Any]) -> Markup:
     return Markup(text)
 
 
+def measure_value(value: float | None, unit: str) -> str:
+    """A chart value as text, in the measure's unit."""
+    if value is None:
+        return "–"
+    if unit == "files":
+        return f"{round(value):,}"
+    if unit == "bytes":
+        return human_bytes(value)
+    if unit == "percent":
+        if 0 < value < 0.1:
+            return "<0.1%"
+        return f"{value:.0f}%" if value >= 10 or value == 0 else f"{value:.1f}%"
+    if unit == "gbh":
+        return f"{value:.2f} GB/h"
+    if unit == "bitrate":
+        return f"{value / 1e6:.1f} Mb/s"
+    if unit == "hours":
+        return f"{value:,.0f} h" if value >= 10 else f"{value:.1f} h"
+    return f"{value:g}"
+
+
 def _distinct_labels(values: list[float]) -> tuple[list[str], int]:
     """Byte labels with just enough decimals that neighbouring values differ."""
     for digits in range(1, 5):
@@ -262,6 +283,7 @@ def _env() -> Environment:
         audio_label=audio_label,
         shell_quote=shlex.quote,
         issue_text=issue_text,
+        measure=measure_value,
         parent_folder=parent_folder,
     )
     env.globals.update(qs=query_string, folder_url=folder_url, rel_folder=rel_folder,
@@ -420,14 +442,18 @@ def create_app(service: ScanService) -> Starlette:
     def files(request: Request, conn: sqlite3.Connection) -> Response:
         params = request.query_params
         facets = db.cached(_key("facets", params), lambda: queries.facet_counts(conn, params))
-        groups = page = None
-        if queries.group_mode(params):
+        groups = page = chart = None
+        if params.get("by") == "chart":
+            chart = db.cached(_key("chart", params), lambda: charts.chart_data(conn, params))
+        elif queries.group_mode(params):
             groups = db.cached(_key("groups", params), lambda: queries.file_groups(conn, params))
         else:
             page = db.cached(_key("files", params), lambda: queries.files(conn, params))
         scope = queries.title_label(conn, params.get("title"), params.get("season"))
         return render(request, "files.html", _conn=conn, page=page, groups=groups,
-                      facets=facets, facet_defs=queries.FACETS, scope=scope)  # fmt: skip
+                      chart=chart, chart_dims=charts.DIMENSIONS,
+                      chart_measures=charts.MEASURES, facets=facets,
+                      facet_defs=queries.FACETS, scope=scope)  # fmt: skip
 
     async def files_csv(request: Request) -> Response:
         path = db_path()
@@ -440,11 +466,12 @@ def create_app(service: ScanService) -> Starlette:
             writer = csv.writer(buf)
             with db.connection(path) as conn:
                 assert conn is not None
-                rows = (
-                    queries.file_groups_csv_rows
-                    if queries.group_mode(params)
-                    else queries.files_csv_rows
-                )(conn, params)
+                if params.get("by") == "chart":
+                    rows: Any = charts.csv_rows(conn, params)
+                elif queries.group_mode(params):
+                    rows = queries.file_groups_csv_rows(conn, params)
+                else:
+                    rows = queries.files_csv_rows(conn, params)
                 for i, row in enumerate(rows):
                     writer.writerow(row)
                     if i % 500 == 0:
