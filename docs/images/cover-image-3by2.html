@@ -1,0 +1,113 @@
+<!doctype html>
+<!--
+  Source for the project card (docs/images/media-audit-card*.png): 1500 x 1000 (3:2).
+  The numbers are illustrative, not from a real library. Re-render with:
+    chromium --headless=new --hide-scrollbars --window-size=1500,1000 \
+      --screenshot=docs/images/media-audit-card.png docs/images/card.html
+  then resize to the sizes you need (e.g. magick … -resize 1050x700).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --accent: #2a78d6; --text: #f4f3ef; --text-2: #c9c8be; --text-3: #8f8e86;
+    --s0: #5a9cf0; --s1: #f0a04f; --s2: #4dbb8a; --s3: #e06b9b; --warn: #f0b23a;
+    --panel: #fbfbf9; --panel-2: #f0efec; --line: #e2e1dc; --ink: #141413; --ink-2: #5a5953;
+    --track: #e8e7e2;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1500px; height: 1000px; overflow: hidden; }
+  body {
+    font-family: "Noto Sans", "DejaVu Sans", sans-serif; color: var(--text);
+    background:
+      radial-gradient(900px 700px at 78% 40%, rgba(42, 120, 214, 0.38), transparent 70%),
+      radial-gradient(700px 600px at 0% 100%, rgba(77, 187, 138, 0.14), transparent 70%),
+      #121314;
+    display: grid; grid-template-columns: 590px 1fr; gap: 50px; padding: 80px 80px 80px 90px; align-items: center;
+  }
+
+  /* ------------------------------------------------ left: name and promise */
+  .brand { display: flex; flex-direction: column; justify-content: center; gap: 30px; }
+  .logo { width: 132px; height: 132px; filter: drop-shadow(0 12px 30px rgba(42, 120, 214, 0.5)); }
+  h1 { font-size: 94px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; white-space: nowrap; }
+  .tagline { font-size: 38px; line-height: 1.22; color: var(--text-2); font-weight: 500; }
+  .tagline strong { color: var(--text); font-weight: 700; }
+  .chips { display: flex; flex-wrap: nowrap; gap: 12px; }
+  .chip {
+    font-size: 24px; font-weight: 600; padding: 9px 18px; border-radius: 999px; white-space: nowrap;
+    background: rgba(255, 255, 255, 0.08); border: 1.5px solid rgba(255, 255, 255, 0.16);
+    color: var(--text);
+  }
+
+  /* ------------------------------------------------ right: the app */
+  .stage { display: flex; align-items: center; }
+  .window {
+    width: 100%; background: var(--panel); color: var(--ink);
+    border-radius: 22px; overflow: hidden;
+    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+  .bar-top { display: flex; align-items: center; gap: 26px; padding: 20px 30px; border-bottom: 1px solid var(--line); }
+  .dots { display: flex; gap: 9px; }
+  .dots i { width: 14px; height: 14px; border-radius: 50%; background: #d9d8d2; display: block; }
+  .nav { display: flex; gap: 8px; font-size: 21px; color: var(--ink-2); }
+  .nav span { padding: 6px 14px; border-radius: 8px; }
+  .nav .on { background: var(--panel-2); color: var(--ink); font-weight: 700; }
+  .body { padding: 26px 32px 30px; display: flex; flex-direction: column; gap: 26px; }
+  h2 { font-size: 26px; font-weight: 700; display: flex; justify-content: space-between; align-items: baseline; }
+  h2 small { font-size: 19px; color: var(--ink-2); font-weight: 500; }
+
+  .rows { display: flex; flex-direction: column; gap: 14px; }
+  .row { display: grid; grid-template-columns: 92px 1fr 70px; align-items: center; gap: 16px; font-size: 21px; }
+  .row b { font-weight: 700; }
+  .track { height: 30px; border-radius: 7px; background: var(--track); overflow: hidden; display: flex; }
+  .track span { display: block; height: 100%; }
+  .track span + span { box-shadow: inset 2px 0 0 var(--panel); }
+  .n { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .s0 { background: var(--s0); } .s1 { background: var(--s1); } .s2 { background: var(--s2); } .s3 { background: var(--s3); }
+  .legend { display: flex; gap: 22px; font-size: 19px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 15px; height: 15px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; }
+
+  .issues { border-top: 1px solid var(--line); padding-top: 22px; display: flex; flex-direction: column; gap: 12px; }
+  .issue { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; font-size: 20px; }
+  .sev { font-size: 17px; font-weight: 700; padding: 3px 10px; border-radius: 6px; border: 2px solid; }
+  .sev.warn { color: #8a5a00; border-color: #c99a3a; }
+  .sev.err { color: #b42f2f; border-color: #d57a7a; }
+  .issue .what { color: var(--ink); }
+  .issue .what em { font-style: normal; color: var(--ink-2); }
+  .gain { color: #0a7d0a; font-weight: 700; }
+</style>
+</head>
+<body>
+  <section class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#2a78d6"/><rect x="7" y="17" width="4" height="8" rx="1.5" fill="#fff"/><rect x="14" y="11" width="4" height="14" rx="1.5" fill="#fff"/><rect x="21" y="7" width="4" height="18" rx="1.5" fill="#fff"/></svg>
+    <h1>media-audit</h1>
+    <p class="tagline">See what's <strong>really</strong> in your media library.</p>
+    <div class="chips"><span class="chip">Storage</span><span class="chip">HDR &amp; DV</span><span class="chip">Issues</span><span class="chip">Read-only</span></div>
+  </section>
+
+  <section class="stage">
+    <div class="window">
+      <div class="bar-top">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="nav"><span>Overview</span><span>Titles</span><span class="on">Files</span><span>Issues</span></div>
+      </div>
+      <div class="body">
+        <h2>Dynamic range by resolution <small>share of files</small></h2>
+        <div class="legend"><span><i class="s0"></i>SDR</span><span><i class="s1"></i>HDR10</span><span><i class="s2"></i>Dolby Vision</span><span><i class="s3"></i>HDR10+</span></div>
+        <div class="rows">
+          <div class="row"><b>2160p</b><div class="track"><span class="s0" style="width:12%"></span><span class="s1" style="width:46%"></span><span class="s2" style="width:30%"></span><span class="s3" style="width:12%"></span></div><span class="n">412</span></div>
+          <div class="row"><b>1080p</b><div class="track"><span class="s0" style="width:91%"></span><span class="s1" style="width:6%"></span><span class="s2" style="width:3%"></span></div><span class="n">9,804</span></div>
+          <div class="row"><b>720p</b><div class="track"><span class="s0" style="width:100%"></span></div><span class="n">1,236</span></div>
+          <div class="row"><b>SD</b><div class="track"><span class="s0" style="width:100%"></span></div><span class="n">688</span></div>
+        </div>
+        <div class="issues">
+          <div class="issue"><span class="sev warn">⚠ Warning</span><span class="what">Same episode stored twice <em>· S02E07</em></span><span class="gain">2.4 GB</span></div>
+          <div class="issue"><span class="sev warn">⚠ Warning</span><span class="what">Season split across folders <em>· Season 1 / 01</em></span><span class="gain">clean up</span></div>
+          <div class="issue"><span class="sev err">✕ Error</span><span class="what">Unreadable file <em>· no video stream</em></span><span class="gain"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>
